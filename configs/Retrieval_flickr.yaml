@@ -6,8 +6,8 @@ image_root: '/export/share/datasets/vision/flickr30k/' #flickr30k-images/
 bert_config: 'configs/config_bert.json'
 
 image_res: 384
-batch_size_train: 32
-batch_size_test: 64
+batch_size_train: 2
+batch_size_test: 2
 
 queue_size: 65536
 momentum: 0.995
