@@ -35,28 +35,28 @@ class ALBEF(nn.Module):
         self.itm_head = nn.Linear(text_width, 2) 
         
         # create momentum models
-        self.visual_encoder_m = VisionTransformer(
-            img_size=config['image_res'], patch_size=16, embed_dim=768, depth=12, num_heads=12, 
-            mlp_ratio=4, qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6)) 
-        self.vision_proj_m = nn.Linear(vision_width, embed_dim)
-        self.text_encoder_m = BertModel.from_pretrained(text_encoder, config=bert_config, add_pooling_layer=False)           
-        self.text_proj_m = nn.Linear(text_width, embed_dim)   
+        # self.visual_encoder_m = VisionTransformer(
+        #     img_size=config['image_res'], patch_size=16, embed_dim=768, depth=12, num_heads=12, 
+        #     mlp_ratio=4, qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6)) 
+        # self.vision_proj_m = nn.Linear(vision_width, embed_dim)
+        # self.text_encoder_m = BertModel.from_pretrained(text_encoder, config=bert_config, add_pooling_layer=False)           
+        # self.text_proj_m = nn.Linear(text_width, embed_dim)   
 
-        self.model_pairs = [[self.visual_encoder,self.visual_encoder_m],
-                            [self.vision_proj,self.vision_proj_m],
-                            [self.text_encoder,self.text_encoder_m],
-                            [self.text_proj,self.text_proj_m],
-                           ]
-        self.copy_params()
+        # self.model_pairs = [[self.visual_encoder,self.visual_encoder_m],
+        #                     [self.vision_proj,self.vision_proj_m],
+        #                     [self.text_encoder,self.text_encoder_m],
+        #                     [self.text_proj,self.text_proj_m],
+        #                    ]
+        # self.copy_params()
 
-        # create the queue
-        self.register_buffer("image_queue", torch.randn(embed_dim, self.queue_size))
-        self.register_buffer("text_queue", torch.randn(embed_dim, self.queue_size))
-        self.register_buffer("idx_queue", torch.full((1,self.queue_size),-100))
-        self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))  
+        # # create the queue
+        # self.register_buffer("image_queue", torch.randn(embed_dim, self.queue_size))
+        # self.register_buffer("text_queue", torch.randn(embed_dim, self.queue_size))
+        # self.register_buffer("idx_queue", torch.full((1,self.queue_size),-100))
+        # self.register_buffer("queue_ptr", torch.zeros(1, dtype=torch.long))  
 
-        self.image_queue = nn.functional.normalize(self.image_queue, dim=0)
-        self.text_queue = nn.functional.normalize(self.text_queue, dim=0)
+        # self.image_queue = nn.functional.normalize(self.image_queue, dim=0)
+        # self.text_queue = nn.functional.normalize(self.text_queue, dim=0)
         
 
     def forward(self, image, text):
