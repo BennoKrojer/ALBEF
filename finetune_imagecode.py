@@ -73,11 +73,11 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
             matching_score = matching_score.reshape(-1, 10)
         ce_loss = F.cross_entropy(matching_score, target)
         total_loss += ce_loss.item()
-        optimizer.zero_grad()
         ce_loss.backward()
 
         if i%args.grad_accumulation:
             optimizer.step()
+            optimizer.zero_grad()
 
         epoch_cond = True if args.scheduler_always else (epoch==0)
         if epoch_cond and i%step_size==0 and i<=warmup_iterations: 
@@ -181,16 +181,18 @@ def main(args, config):
             break
            
         lr_scheduler.step(epoch+warmup_steps+1)  
-        # dist.barrier()     
         torch.cuda.empty_cache()
+        if accuracy > best:
+            best = accuracy
+            best_epoch = epoch
+            wandb.log('Best Accuracy': best)
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str)) 
 
-    if utils.is_main_process():   
-        with open(os.path.join(args.output_dir, "log.txt"),"a") as f:
-            f.write("best epoch: %d"%best_epoch)               
+    with open(os.path.join(args.output_dir, "log.txt"),"a") as f:
+        f.write("best epoch: %d"%best_epoch)               
 
             
 if __name__ == '__main__':
@@ -220,6 +222,7 @@ if __name__ == '__main__':
     config['optimizer']['lr'] = args.lr
     config['optimizer']['weight_decay'] = args.decay
 
+    wandb.config.update(args)
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         
     yaml.dump(config, open(os.path.join(args.output_dir, 'config.yaml'), 'w'))    
