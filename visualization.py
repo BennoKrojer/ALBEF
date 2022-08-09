@@ -1,4 +1,4 @@
-model_path = 'refcoco.pth'
+model_path = '../ALBEF-old/refcoco.pth'
 bert_config_path = 'configs/config_bert.json'
 use_cuda = False
 
@@ -12,6 +12,17 @@ from torch import nn
 from torchvision import transforms
 
 import json
+
+from PIL import Image
+
+import cv2
+import numpy as np
+
+from skimage import transform as skimage_transform
+from scipy.ndimage import filters
+from matplotlib import pyplot as plt
+import re
+
 
 class VL_Transformer_ITM(nn.Module):
     def __init__(self,                 
@@ -47,8 +58,6 @@ class VL_Transformer_ITM(nn.Module):
         vl_output = self.itm_head(vl_embeddings)   
         return vl_output
 
-import re
-
 def pre_caption(caption,max_words=30):
     caption = re.sub(
         r"([,.'!?\"()*#:;~])",
@@ -69,15 +78,6 @@ def pre_caption(caption,max_words=30):
     if len(caption_words)>max_words:
         caption = ' '.join(caption_words[:max_words])            
     return caption
-
-from PIL import Image
-
-import cv2
-import numpy as np
-
-from skimage import transform as skimage_transform
-from scipy.ndimage import filters
-from matplotlib import pyplot as plt
 
 def getAttMap(img, attMap, blur = True, overlap = True):
     attMap -= attMap.min()

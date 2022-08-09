@@ -75,7 +75,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
         total_loss += ce_loss.item()
         ce_loss.backward()
 
-        if i%args.grad_accumulation:
+        if i%args.grad_accumulation == 0:
             optimizer.step()
             optimizer.zero_grad()
 
@@ -185,7 +185,7 @@ def main(args, config):
         if accuracy > best:
             best = accuracy
             best_epoch = epoch
-            wandb.log('Best Accuracy': best)
+            wandb.log({'Best Accuracy': best})
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
