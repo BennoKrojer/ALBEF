@@ -75,7 +75,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
         total_loss += ce_loss.item()
         ce_loss.backward()
 
-        if i%args.grad_accumulation == 0:
+        if i%args.grad_accumulation == 0:   
             optimizer.step()
             optimizer.zero_grad()
 

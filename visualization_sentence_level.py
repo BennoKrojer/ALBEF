@@ -1,6 +1,9 @@
+import os
+from pathlib import Path
 model_path = '../ALBEF-old/refcoco.pth'
 bert_config_path = 'configs/config_bert.json'
 use_cuda = True
+from dataset_imagecode import ImageCoDeDataset
 
 from functools import partial
 from models.vit import VisionTransformer
@@ -131,60 +134,64 @@ checkpoint = torch.load(model_path, map_location='cpu')
 msg = model.load_state_dict(checkpoint,strict=False)
 model.eval()
 
-block_num = 8
+block_num = 11
+TOKEN_MEAN = False
 
 model.text_encoder.base_model.base_model.encoder.layer[block_num].crossattention.self.save_attention = True
 
 if use_cuda:
     model.cuda() 
 
-image_path = 'examples/image0.jpg'
-image_pil = Image.open(image_path).convert('RGB')   
-image = transform(image_pil).unsqueeze(0)  
+data_dir = '../imagecode/data'
+val_dataset = ImageCoDeDataset(data_dir, 'valid', {'image_res': 384})
 
-caption = 'a movie poster of people with swords'
-text = pre_caption(caption)
-text_input = tokenizer(text, return_tensors="pt")
+for imgs, text, img_idx, is_video, img_dir in val_dataset:
+    print(img_dir)
+    img_files = list((Path(f'/network/scratch/b/benno.krojer/dataset/games/{img_dir}')).glob('*.jpg'))
+    img_files = sorted(img_files, key=lambda x: int(str(x).split('/')[-1].split('.')[0][3:]))
+    if not os.path.isdir(f'valid_visualization_{"mean" if TOKEN_MEAN else "cls"}_block{block_num}/{img_dir}_{img_idx}'):
+        os.makedirs(f'valid_visualization_{"mean" if TOKEN_MEAN else "cls"}_block{block_num}/{img_dir}_{img_idx}')
+    for j in range(10):
+        image_path = img_files[j]
+        img = imgs[j].unsqueeze(0)
+        text = pre_caption(text)
+        text_input = tokenizer(text, return_tensors="pt")
 
-if use_cuda:
-    image = image.cuda()
-    text_input = text_input.to(image.device)
+        if use_cuda:
+            image = img.cuda()
+            text_input = text_input.to(image.device)
 
-output = model(image, text_input)
-loss = output[:,1].sum()
+        output = model(image, text_input)
+        loss = output[:,1].sum()
 
-model.zero_grad()
-loss.backward()    
+        model.zero_grad()
+        loss.backward()    
 
-with torch.no_grad():
-    mask = text_input.attention_mask.view(text_input.attention_mask.size(0),1,-1,1,1)
+        with torch.no_grad():
+            mask = text_input.attention_mask.view(text_input.attention_mask.size(0),1,-1,1,1)
 
-    grads=model.text_encoder.base_model.base_model.encoder.layer[block_num].crossattention.self.get_attn_gradients()
-    cams=model.text_encoder.base_model.base_model.encoder.layer[block_num].crossattention.self.get_attention_map()
+            grads=model.text_encoder.base_model.base_model.encoder.layer[block_num].crossattention.self.get_attn_gradients()
+            cams=model.text_encoder.base_model.base_model.encoder.layer[block_num].crossattention.self.get_attention_map()
 
-    cams = cams[:, :, :, 1:].reshape(image.size(0), 12, -1, 24, 24) * mask
-    grads = grads[:, :, :, 1:].clamp(0).reshape(image.size(0), 12, -1, 24, 24) * mask
+            cams = cams[:, :, :, 1:].reshape(image.size(0), 12, -1, 24, 24) * mask
+            grads = grads[:, :, :, 1:].clamp(0).reshape(image.size(0), 12, -1, 24, 24) * mask
 
-    gradcam = cams * grads
-    gradcam = gradcam[0].mean(0).cpu().detach()
+            gradcam = cams * grads
+            if TOKEN_MEAN:
+                gradcam = gradcam[0].mean(0).mean(0).cpu().detach()
+            else:
+                gradcam = gradcam[0].mean(0)[0].cpu().detach()
 
-num_image = len(text_input.input_ids[0]) 
-fig, ax = plt.subplots(num_image, 1, figsize=(15,5*num_image))
+        # num_image = len(text_input.input_ids[0]) 
+        fig, ax = plt.subplots(1, 1, figsize=(15,5*1))
 
-rgb_image = cv2.imread(image_path)[:, :, ::-1]
-rgb_image = np.float32(rgb_image) / 255
+        rgb_image = cv2.imread(str(image_path))[:, :, ::-1]
+        rgb_image = np.float32(rgb_image) / 255
 
-ax[0].imshow(rgb_image)
-ax[0].set_yticks([])
-ax[0].set_xticks([])
-ax[0].set_xlabel("Image")
-            
-for i,token_id in enumerate(text_input.input_ids[0][1:]):
-    word = tokenizer.decode([token_id])
-    gradcam_image = getAttMap(rgb_image, gradcam[i+1])
-    ax[i+1].imshow(gradcam_image)
-    ax[i+1].set_yticks([])
-    ax[i+1].set_xticks([])
-    ax[i+1].set_xlabel(word)
-
-plt.savefig('vis_text-fusion.png')
+        ax.imshow(rgb_image)
+        ax.set_yticks([])
+        ax.set_xticks([])
+        ax.set_xlabel(text)
+        gradcam_image = getAttMap(rgb_image, gradcam)
+        ax.imshow(gradcam_image)
+        plt.savefig(f'valid_visualization_{"mean" if TOKEN_MEAN else "cls"}_block{block_num}/{img_dir}_{img_idx}/{j}.png')
