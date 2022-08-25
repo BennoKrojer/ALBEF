@@ -1,7 +1,6 @@
 import argparse
 from nis import match
 import os
-from statistics import mode
 from tabnanny import check
 import ruamel.yaml as yaml
 import numpy as np
@@ -27,18 +26,15 @@ import utils
 from dataset import create_dataset, create_sampler, create_loader
 from scheduler import create_scheduler
 from optim import create_optimizer
-from torchmetrics.functional import accuracy
+
 from dataset_imagecode import ImageCoDeDataset
 import wandb
 
-wandb.init(project='ALBEF-finetune', settings=wandb.Settings(start_method='fork'))
+wandb.init(project='ALBEF-finetune-grad', settings=wandb.Settings(start_method='fork'))
 
 
 def evaluate(model, data_loader, tokenizer, device):    
     correct = 0
-    correct2 = 0
-    correct3 = 0
-    correct5 = 0
     total = 0
     for i,(image, text, target, is_video, img_dir) in enumerate(tqdm(data_loader)):
         image = image.to(device,non_blocking=True)   
@@ -53,21 +49,20 @@ def evaluate(model, data_loader, tokenizer, device):
         matching_score = matching_score.reshape(-1, 10)
         pred = torch.argmax(matching_score, dim=1)
         correct += (pred == target).sum()
-        correct2 += accuracy(matching_score, target, top_k=2) * target.shape[0]
-        correct3 += accuracy(matching_score, target, top_k=3) * target.shape[0]
-        correct5 += accuracy(matching_score, target, top_k=5) * target.shape[0]
         total += target.shape[0]
-
-    return correct/total, correct2/total, correct3/total, correct5/total
+    return correct/total
         
 def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, args):  
     model.train()
     step_size = 100
     warmup_iterations = warmup_steps*step_size
     total_loss = 0
+    total_ce_loss = 0
+    total_counter_loss = 0
     for i,(image, text, target, is_video, img_dir) in enumerate(tqdm(data_loader)):
-        image = image.to(device,non_blocking=True)   
-        image = image.flatten(end_dim=1)
+        image = image.to(device,non_blocking=True)
+        batchsize, image_size = image.shape[0], image.shape[-1]
+        image = image.flatten(end_dim=1).requires_grad_()
         target = target.to(device,non_blocking=True)
         if args.binary_cross_entropy:
             target = F.one_hot(target, num_classes=10).flatten()
@@ -76,14 +71,37 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
             text_ += [t]*10
         text_input = tokenizer(text_, padding='longest', max_length=30, return_tensors="pt").to(device)  #TODO: max_length
         matching_score = model(image, text_input) #TODO: deal cleanly with these 2-dim output as softmax probabilities and for finetuning later
+
+        image_ = image.reshape(batchsize, 10, image.shape[1], image_size, image_size)
+        zero = torch.zeros((batchsize,1,3,image_size,image_size)).cuda()
+        diff = image_ - torch.cat([zero, image_[:,:-1,:,:,:]], dim=1)
+        diff = diff - torch.cat([image_[:,1:,:,:,:], zero], dim=1)
+        out = matching_score[:,1].sum()
+
+        img_grad = torch.autograd.grad(out, image, retain_graph=True, create_graph=True, allow_unused=True)[0]
+
+        diff = diff.reshape(diff.shape[0]*diff.shape[1], diff.shape[2]*diff.shape[3]*diff.shape[4])
+        img_grad = img_grad.reshape(img_grad.shape[0], img_grad.shape[1]*img_grad.shape[2]*img_grad.shape[3])
+        if args.abs_diff:
+            diff = torch.abs(diff)
+            img_grad = torch.abs(img_grad)
+        counterfactual_loss = 1 - torch.nn.functional.cosine_similarity(diff, img_grad, dim=1) #do abs() before maybe?
+        counterfactual_loss = counterfactual_loss.reshape(batchsize, 10) * is_video.unsqueeze(1).cuda()
+        counterfactual_loss = counterfactual_loss.mean()
+
         if not args.binary_cross_entropy:
             matching_score = matching_score[:,1]
             matching_score = matching_score.reshape(-1, 10)
         ce_loss = F.cross_entropy(matching_score, target)
-        total_loss += ce_loss.item()
-        ce_loss.backward()
+        loss = ce_loss + args.loss_factor * counterfactual_loss
+        
+        total_loss += loss.item()
+        total_ce_loss += ce_loss.item()
+        total_counter_loss += counterfactual_loss.item()
 
-        if i%args.grad_accumulation == 0:   
+        loss.backward()
+
+        if i%args.grad_accumulation == 0:
             optimizer.step()
             optimizer.zero_grad()
 
@@ -92,8 +110,12 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
             scheduler.step(i//step_size)
 
         if i != 0 and i%step_size==0:
-            wandb.log({'Loss': total_loss/step_size})
+            wandb.log({'Total Loss': total_loss/step_size})
             total_loss = 0
+            wandb.log({'CE Loss': total_ce_loss/step_size})
+            total_ce_loss = 0
+            wandb.log({'Counterfactual Loss': total_counter_loss/step_size})
+            total_counter_loss = 0
 
 
 def main(args, config):
@@ -136,7 +158,7 @@ def main(args, config):
     
     if args.checkpoint:    
         checkpoint = torch.load(args.checkpoint, map_location='cpu') 
-        if args.checkpoint == 'ALBEF.pth' or args.evaluate:
+        if args.checkpoint == 'ALBEF.pth':
             state_dict = checkpoint['model']
         else:
             state_dict = checkpoint
@@ -181,11 +203,8 @@ def main(args, config):
         if not args.evaluate:
             train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, args)
         with torch.no_grad():
-            accuracy, accuracy2, accuracy3, accuracy5 = evaluate(model, val_loader, tokenizer, device)
+            accuracy = evaluate(model, val_loader, tokenizer, device)
             print(accuracy)
-            print(accuracy2)
-            print(accuracy3)
-            print(accuracy5)
             wandb.log({'Accuracy': accuracy})        
 
         if args.evaluate: 
@@ -197,14 +216,6 @@ def main(args, config):
             best = accuracy
             best_epoch = epoch
             wandb.log({'Best Accuracy': best})
-            save_obj = {
-                        'model': model.state_dict(),
-                        'optimizer': optimizer.state_dict(),
-                        'lr_scheduler': lr_scheduler.state_dict(),
-                        'config': config,
-                        'epoch': epoch,
-                    }
-            torch.save(save_obj, os.path.join('checkpoints', 'finetune_refcoco_checkpoint_best.pth'))  
 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
@@ -222,8 +233,8 @@ if __name__ == '__main__':
     parser.add_argument('--text_encoder', default='bert-base-uncased')
     parser.add_argument('--evaluate', action='store_true')
     parser.add_argument('--batchsize', type=int, default=4)
-    parser.add_argument('--lr', type=float, default=4e-6)
-    parser.add_argument('--decay', type=float, default=0.01)
+    parser.add_argument('--lr', type=float)
+    parser.add_argument('--decay', type=float)
     parser.add_argument('--grad_accumulation', type=int, default=1)
     parser.add_argument('--scheduler_always', type=str)
     parser.add_argument('--binary_cross_entropy', type=str)
@@ -231,6 +242,8 @@ if __name__ == '__main__':
     parser.add_argument('--seed', default=42, type=int)
     parser.add_argument('--world_size', default=1, type=int, help='number of distributed processes')    
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
+    parser.add_argument('--loss_factor', default=1, type=float)
+    parser.add_argument('--abs_diff', action='store_true')
     parser.add_argument('--distributed', default=False, type=bool)
     parser.add_argument('--job_id', type=str)
     args = parser.parse_args()
