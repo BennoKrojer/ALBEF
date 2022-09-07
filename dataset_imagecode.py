@@ -53,7 +53,7 @@ class ImageCoDeDataset(Dataset):
         #     self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
         #     self.text_transform = partial(default_text_transform, tokenizer=self.tokenizer)
 
-        self.data = self.load_data(Path(data_dir), '/network/scratch/b/benno.krojer/dataset/games', split, video_only)
+        self.data = self.load_data(Path(data_dir), '/mnt/beegfs/Scratch/qing_meng/torch/imagecode/data/image-sets', split, video_only)
 
     @staticmethod
     def load_data(data_dir, img_path, split, video_only=False):
@@ -83,7 +83,8 @@ class ImageCoDeDataset(Dataset):
         # txt = self.text_transform(text)
         is_video = torch.tensor(1 if 'open-images' not in img_dir else 0)
         
-        return img, text, img_idx, is_video, img_dir
+        # return img, text, img_idx, is_video, img_dir
+        return img, text, img_idx # hardcoded for multi-task learning
     
     def __len__(self):
         return len(self.data)

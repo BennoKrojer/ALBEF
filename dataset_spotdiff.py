@@ -55,8 +55,8 @@ class SpotdiffDataset(Dataset):
             image_0 = self.image_transform(Image.open(image0_file).convert('RGB'))
             image_1 = self.image_transform(Image.open(image1_file).convert('RGB'))
             dataset.append((image_0, image_1, text))
-            # if i > 500:
-            #     break
+            if i > 500:
+                break
         
         return dataset
     
@@ -117,7 +117,6 @@ class SpotdiffClassificationDataset(Dataset):
             dataset.append((img, text, target))
             # if i > 50:
             #     break
-        
 
         return dataset
     
