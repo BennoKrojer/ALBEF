@@ -122,8 +122,8 @@ def main(args, config):
     train_dataloaders = {}
     tasks_mapping = {
         "imagecode": '/mnt/beegfs/Scratch/qing_meng/torch/imagecode/data',
-        "spotdiff": '/mnt/beegfs/Scratch/qing_meng/torch/ALBEF/spotdiff',
-        "clevr_change": '/mnt/Scratch/qing_meng/torch/ALBEF/clevr_change' 
+        "spotdiff": '/home/mila/b/benno.krojer/scratch/spotdiff',
+        "clevr_change": '/home/mila/b/benno.krojer/scratch/spotdiff'
     }
     print(f"tasks to train {args.tasks}")
     data_dirs = [tasks_mapping[task] for task in args.tasks.split(",")]
