@@ -34,7 +34,7 @@ from dataset_clevr_change import ClevrChangeClassificationDataset
 import wandb
 from dataset_multitask import DataLoaderWithTaskname, MultitaskDataloader 
 
-wandb.init(project='ALBEF-finetune', settings=wandb.Settings(start_method='fork'))
+wandb.init(project='ALBEF-multi-finetune', settings=wandb.Settings(start_method='fork'))
 
 
 def evaluate(model, data_loader, tokenizer, device):    
@@ -121,9 +121,9 @@ def main(args, config):
     print("Creating dataset")
     train_dataloaders = {}
     tasks_mapping = {
-        "imagecode": '/mnt/beegfs/Scratch/qing_meng/torch/imagecode/data',
+        "imagecode": '../imagecode/data',
         "spotdiff": '/home/mila/b/benno.krojer/scratch/spotdiff',
-        "clevr_change": '/home/mila/b/benno.krojer/scratch/spotdiff'
+        "clevr_change": '/home/mila/b/benno.krojer/scratch/clevr_change'
     }
     print(f"tasks to train {args.tasks}")
     data_dirs = [tasks_mapping[task] for task in args.tasks.split(",")]
