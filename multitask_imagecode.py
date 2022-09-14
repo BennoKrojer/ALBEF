@@ -62,7 +62,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     warmup_iterations = warmup_steps*step_size
     total_loss = 0
     for i,(task_name, image, text, target) in enumerate(tqdm(data_loader, desc='batch')):
-        print(i, task_name, target)
+        # print(i, task_name, target)
         image = image.to(device,non_blocking=True)   
         image = image.flatten(end_dim=1)
         target = target.to(device,non_blocking=True)
