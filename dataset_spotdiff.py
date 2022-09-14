@@ -114,7 +114,7 @@ class SpotdiffClassificationDataset(Dataset):
                 images = [image_1,image_0]
             
             img = torch.stack(images, dim=0)
-            dataset.append((img, text, target))
+            dataset.append((img, text, target, 1))
             # if i > 50:
             #     break
 

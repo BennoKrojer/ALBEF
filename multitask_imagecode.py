@@ -40,7 +40,9 @@ wandb.init(project='ALBEF-multi-finetune', settings=wandb.Settings(start_method=
 def evaluate(model, data_loader, tokenizer, device):    
     correct = 0
     total = 0
-    for i,(image, text, target) in enumerate(tqdm(data_loader)):
+    video_correct = 0
+    video_total = 0
+    for i,(image, text, target, is_video) in enumerate(tqdm(data_loader)):
         image = image.to(device,non_blocking=True)   
         target = target.to(device,non_blocking=True)
         image = image.flatten(end_dim=1)
@@ -54,14 +56,17 @@ def evaluate(model, data_loader, tokenizer, device):
         pred = torch.argmax(matching_score, dim=1)
         correct += (pred == target).sum()
         total += target.shape[0]
-    return correct/total
+        
+        video_correct += ((pred == target.cuda()) * is_video).sum()
+        video_total += is_video.sum()
+    return correct/total, video_correct/video_total
         
 def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, args):  
     model.train()
     step_size = 100
     warmup_iterations = warmup_steps*step_size
     total_loss = 0
-    for i,(task_name, image, text, target) in enumerate(tqdm(data_loader, desc='batch')):
+    for i,(task_name, image, text, target, is_video) in enumerate(tqdm(data_loader, desc='batch')):
         # print(i, task_name, target)
         image = image.to(device,non_blocking=True)   
         image = image.flatten(end_dim=1)
@@ -140,8 +145,8 @@ def main(args, config):
             val_dataset = ClevrChangeClassificationDataset(data_dir, 'val', config)
             task_name = "clevr_change"
         elif "imagecode" in data_dir:
-            train_dataset = ImageCoDeDataset(data_dir, 'train', config)
-            val_dataset = ImageCoDeDataset(data_dir, 'valid', config)
+            train_dataset = ImageCoDeDataset(data_dir, 'train', config, video_only=args.video_only)
+            val_dataset = ImageCoDeDataset(data_dir, 'valid', config, video_only=args.video_only)
             task_name = "imagecode"
         else:
             raise Exception(f"`args.dataset_dir` is invalid, provided {args.dataset_dir}")
@@ -153,7 +158,7 @@ def main(args, config):
                                                             collate_fns=[None,None])   
         train_dataloaders[task_name] = DataLoaderWithTaskname(task_name, train_loader)
     print(train_dataloaders)
-    train_loader = MultitaskDataloader(train_dataloaders)
+    train_loader = MultitaskDataloader(train_dataloaders, args.spotdiff_factor)
     
     tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
 
@@ -208,9 +213,9 @@ def main(args, config):
         if not args.evaluate:
             train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, args)
         with torch.no_grad():
-            accuracy = evaluate(model, val_loader, tokenizer, device)
+            accuracy, video_acc = evaluate(model, val_loader, tokenizer, device)
             print(accuracy)
-            wandb.log({'Accuracy': accuracy})        
+            wandb.log({'Accuracy': accuracy, 'Video Accuracy': video_acc})        
 
         if args.evaluate: 
             break
@@ -251,6 +256,8 @@ if __name__ == '__main__':
     parser.add_argument('--decay', type=float)
     parser.add_argument('--grad_accumulation', type=int, default=1)
     parser.add_argument('--scheduler_always', type=str)
+    parser.add_argument('--video_only', action='store_true')
+    parser.add_argument('--spotdiff_factor', default=1, type=int)
     parser.add_argument('--binary_cross_entropy', type=str)
     parser.add_argument('--device', default='cuda')
     parser.add_argument('--seed', default=42, type=int)

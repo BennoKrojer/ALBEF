@@ -39,10 +39,11 @@ class MultitaskDataloader:
     data loaders.
     """
 
-    def __init__(self, dataloader_dict):
+    def __init__(self, dataloader_dict, spotdiff_factor=1):
+
         self.dataloader_dict = dataloader_dict
         self.num_batches_dict = {
-            task_name: len(dataloader)
+            task_name: len(dataloader) * (spotdiff_factor if task_name == 'spotdiff' else 1)
             for task_name, dataloader in self.dataloader_dict.items()
         }
         self.task_name_list = list(self.dataloader_dict)
@@ -58,11 +59,11 @@ class MultitaskDataloader:
         For each batch, sample a task, and yield a batch from the respective
         task Dataloader.
         We use size-proportional sampling, but you could easily modify this
-        to sample from some-other distribution.
+        to sample from some other distribution.
         """
         task_choice_list = []
         for i, task_name in enumerate(self.task_name_list):
-            task_choice_list += [i] * self.num_batches_dict[task_name]
+            task_choice_list += [i] * (self.num_batches_dict[task_name])
         task_choice_list = np.array(task_choice_list)
         np.random.shuffle(task_choice_list)
         dataloader_iter_dict = {

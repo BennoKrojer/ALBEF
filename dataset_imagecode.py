@@ -84,7 +84,7 @@ class ImageCoDeDataset(Dataset):
         is_video = torch.tensor(1 if 'open-images' not in img_dir else 0)
         
         # return img, text, img_idx, is_video, img_dir
-        return img, text, img_idx # hardcoded for multi-task learning
+        return img, text, img_idx, is_video # hardcoded for multi-task learning
     
     def __len__(self):
         return len(self.data)
