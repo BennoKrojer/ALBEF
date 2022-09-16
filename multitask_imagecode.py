@@ -57,7 +57,7 @@ def evaluate(model, data_loader, tokenizer, device):
         correct += (pred == target).sum()
         total += target.shape[0]
         
-        video_correct += ((pred == target.cuda()) * is_video).sum()
+        video_correct += ((pred.cuda() == target.cuda()) * is_video.cuda()).sum()
         video_total += is_video.sum()
     return correct/total, video_correct/video_total
         

@@ -70,7 +70,9 @@ class SpotdiffDataset(Dataset):
 
 class SpotdiffClassificationDataset(Dataset):
 
-    def __init__(self, data_dir, split, config, image_transform=None, text_transform=None):
+    def __init__(self, data_dir, split, config, image_transform=None, text_transform=None, spotdiff_factor=1):
+        self.SPOTDIFF_FACTOR = spotdiff_factor
+
         super().__init__()
         assert split in ['train', 'val']
 
@@ -121,7 +123,8 @@ class SpotdiffClassificationDataset(Dataset):
         return dataset
     
     def __getitem__(self, idx):
-        return self.data[idx] 
+        idx = idx // 5
+        return self.data[idx]
     
     def __len__(self):
-        return len(self.data)
+        return len(self.data) * self.SPOTDIFF_FACTOR
