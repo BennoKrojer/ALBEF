@@ -137,7 +137,7 @@ def main(args, config):
         print(f"reading data from {data_dir}")
         task_name = None
         if "spotdiff" in data_dir:
-            train_dataset = SpotdiffClassificationDataset(data_dir, 'train', config)
+            train_dataset = SpotdiffClassificationDataset(data_dir, 'train', config, spotdiff_factor=args.spotdiff_factor)
             val_dataset = SpotdiffClassificationDataset(data_dir, 'val', config)
             task_name = "spotdiff"
         elif "clevr_change" in data_dir:
