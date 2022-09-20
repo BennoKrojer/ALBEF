@@ -1,3 +1,4 @@
+from operator import is_
 import os
 import json
 from pathlib import Path
@@ -106,14 +107,14 @@ class SpotdiffClassificationDataset(Dataset):
             # get two different images
             image0_file = os.path.join(data_dir, "resized_images", img_id+".png")
             image1_file = os.path.join(data_dir, "resized_images", img_id+"_2.png")
-            image_0 = self.image_transform(Image.open(image0_file).convert('RGB'))
-            image_1 = self.image_transform(Image.open(image1_file).convert('RGB'))
+            # image_0 = self.image_transform(Image.open(image0_file).convert('RGB'))
+            # image_1 = self.image_transform(Image.open(image1_file).convert('RGB'))
             if random.rand() > 0.5:
                 target = 1
-                images = [image_0,image_1]
+                images = [image0_file,image1_file]
             else:
                 target = 0
-                images = [image_1,image_0]
+                images = [image1_file,image0_file]
             
             img = torch.stack(images, dim=0)
             dataset.append((img, text, target, 1))
@@ -123,8 +124,16 @@ class SpotdiffClassificationDataset(Dataset):
         return dataset
     
     def __getitem__(self, idx):
-        idx = idx // 5
-        return self.data[idx]
+        # idx = idx // 5
+        # return self.data[idx]
+        img, text, target, is_video = self.data[idx]
+        file0, file1 = img
+        image0 = self.image_transform(Image.open(file0).convert('RGB'))
+        image1 = self.image_transform(Image.open(file1).convert('RGB'))
+        imgs = [image0, image1]
+        return imgs, text, target, is_video
+
+
     
     def __len__(self):
         return len(self.data) * self.SPOTDIFF_FACTOR
