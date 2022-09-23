@@ -8,8 +8,8 @@ from dataset.utils import pre_caption
 class nlvr_dataset(Dataset):
     def __init__(self, ann_file, transform, image_root):        
         self.ann = []
-        for f in ann_file:
-            self.ann += json.load(open(f,'r'))
+        for l in open(ann_file, 'r'):
+            self.ann += json.loads(l)
         self.transform = transform
         self.image_root = image_root
         self.max_words = 30
