@@ -1,6 +1,6 @@
 import argparse
 import os
-import ruamel_yaml as yaml
+import ruamel.yaml as yaml
 import numpy as np
 import random
 import time
@@ -25,7 +25,9 @@ import utils
 from dataset import create_dataset, create_sampler, create_loader
 from scheduler import create_scheduler
 from optim import create_optimizer
+import wandb
 
+wandb.init(project='ALBEF-NLVR2-finetune', settings=wandb.Settings(start_method='fork'))
 
 def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, config):
     # train
@@ -81,7 +83,7 @@ def evaluate(model, data_loader, tokenizer, device, config):
 
     for image0, image1, text, targets in metric_logger.log_every(data_loader, print_freq, header):
         images = torch.cat([image0, image1], dim=0)
-        images, targets = images.to(device), targets.to(device)   
+        images, targets = images.to(device), targets.to(device) 
         
         text_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device)  
 
@@ -188,12 +190,12 @@ def main(args, config):
                     'config': config,
                     'epoch': epoch,
                 }
-                torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_%02d.pth'%epoch)) 
+                # torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_%02d.pth'%epoch)) 
                 best = float(val_stats['acc'])
                 best_epoch = epoch
             
-            with open(os.path.join(args.output_dir, "log.txt"),"a") as f:
-                f.write(json.dumps(log_stats) + "\n")
+            # with open(os.path.join(args.output_dir, "log.txt"),"a") as f:
+            #     f.write(json.dumps(log_stats) + "\n")
         
         lr_scheduler.step(epoch+warmup_steps+1)  
         dist.barrier()   
@@ -202,15 +204,15 @@ def main(args, config):
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
     print('Training time {}'.format(total_time_str)) 
     
-    if utils.is_main_process():   
-        with open(os.path.join(args.output_dir, "log.txt"),"a") as f:
-            f.write("best epoch: %d"%best_epoch)               
+    # if utils.is_main_process():   
+    #     with open(os.path.join(args.output_dir, "log.txt"),"a") as f:
+    #         f.write("best epoch: %d"%best_epoch)               
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', default='./configs/NLVR.yaml')
     parser.add_argument('--checkpoint', default='') 
-    parser.add_argument('--output_dir', default='output/NLVR')
+    # parser.add_argument('--output_dir', default='output/NLVR')
     parser.add_argument('--text_encoder', default='bert-base-uncased')
     parser.add_argument('--device', default='cuda')
     parser.add_argument('--seed', default=42, type=int)
@@ -221,8 +223,8 @@ if __name__ == '__main__':
 
     config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
 
-    Path(args.output_dir).mkdir(parents=True, exist_ok=True)
+    # Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         
-    yaml.dump(config, open(os.path.join(args.output_dir, 'config.yaml'), 'w'))    
+    # yaml.dump(config, open(os.path.join(args.output_dir, 'config.yaml'), 'w'))    
     
     main(args, config)

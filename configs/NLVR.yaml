@@ -1,8 +1,8 @@
-train_file: ['data/nlvr_train.json']
-val_file: ['data/nlvr_dev.json']                  
-test_file: ['data/nlvr_test.json']  
+train_file: 'data/nlvr2/train.json'
+val_file: 'data/nlvr2/dev.json'             
+test_file: 'data/nlvr2/test1.json' 
 
-image_root: '/export/share/datasets/vision/NLVR2/' 
+image_root: '/home/mila/b/benno.krojer/scratch/nlvr2/images' 
 
 image_res: 384
 batch_size: 16 
