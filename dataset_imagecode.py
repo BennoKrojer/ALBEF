@@ -34,9 +34,10 @@ normalize = transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.2686295
 
 class ImageCoDeDataset(Dataset):
 
-    def __init__(self, data_dir, split, config, image_transform=None, text_transform=None, video_only=False):
+    def __init__(self, data_dir, split, config, image_transform=None, text_transform=None, video_only=False, quarters=False):
         super().__init__()
         assert split in ['train', 'valid']
+        self.quarters = quarters
 
         if image_transform is not None:
             self.image_transform = image_transform
@@ -53,7 +54,7 @@ class ImageCoDeDataset(Dataset):
         #     self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
         #     self.text_transform = partial(default_text_transform, tokenizer=self.tokenizer)
 
-        self.data = self.load_data(Path(data_dir), '/mnt/beegfs/Scratch/qing_meng/torch/imagecode/data/image-sets', split, video_only)
+        self.data = self.load_data(Path(data_dir), '/network/scratch/b/benno.krojer/dataset/games', split, video_only)
 
     @staticmethod
     def load_data(data_dir, img_path, split, video_only=False):
@@ -77,14 +78,27 @@ class ImageCoDeDataset(Dataset):
     def __getitem__(self, idx):
         img_dir, img_files, img_idx, text = self.data[idx]
         
-        images = [self.image_transform(Image.open(img_file).convert('RGB')) for img_file in img_files]
+        images = [Image.open(img_file).convert('RGB') for img_file in img_files]
+
+        if self.quarters:
+            all_images = []
+            for img in images:
+                img_h = img.size[1] // 2
+                img_w = img.size[0] // 2
+                img1 = img.crop((0, 0, img_w, img_h))
+                img2 = img.crop((img_w, 0, img_w * 2, img_h))
+                img3 = img.crop((0, img_h, img_w, img_h * 2))
+                img4 = img.crop((img_w, img_h, img_w * 2, img_h * 2))
+                all_images = all_images + [img, img1, img2, img3, img4]
+            images = all_images
+
+        images = [self.image_transform(img) for img in images]
         img = torch.stack(images, dim=0)
         
         # txt = self.text_transform(text)
         is_video = torch.tensor(1 if 'open-images' not in img_dir else 0)
         
-        # return img, text, img_idx, is_video, img_dir
-        return img, text, img_idx # hardcoded for multi-task learning
+        return img, text, img_idx, is_video, img_dir
     
     def __len__(self):
         return len(self.data)
