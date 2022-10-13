@@ -1,11 +1,12 @@
-train_file: ['data/nlvr_train.json']
-val_file: ['data/nlvr_dev.json']                  
-test_file: ['data/nlvr_test.json']  
+train_file: '/home/mila/b/benno.krojer/scratch/nlvr2/annotation/train.json'
+val_file: '/home/mila/b/benno.krojer/scratch/nlvr2/annotation/dev.json'               
+test_file: '/home/mila/b/benno.krojer/scratch/nlvr2/annotation/test.json'
 
-image_root: '/export/share/datasets/vision/NLVR2/' 
+image_root: '/home/mila/b/benno.krojer/scratch/nlvr2' 
 
 image_res: 384
-batch_size: 16 
+batch_size: 8 # used to be 16 if you train with 8 GPUs, so now it is 8*16=128
+grad_accumulation: 16
 
 bert_config: 'configs/config_bert.json'
 

@@ -1,6 +1,6 @@
 import argparse
 import os
-import ruamel_yaml as yaml
+import ruamel.yaml as yaml
 import numpy as np
 import random
 import time
@@ -25,7 +25,9 @@ import utils
 from dataset import create_dataset, create_sampler, create_loader
 from scheduler import create_scheduler
 from optim import create_optimizer
+import wandb
 
+wandb.init(project='Multi-Image-Transfer-ALBEF', settings=wandb.Settings(start_method='fork'))
 
 def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, config):
     # train
@@ -51,12 +53,13 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
         else:
             alpha = config['alpha']*min(1,i/len(data_loader))        
 
-        loss = model(images, text_inputs, targets=targets, train=True, alpha=alpha)    
-        
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()    
-               
+        loss = model(images, text_inputs, targets=targets, train=True, alpha=alpha) 
+
+        loss.backward()  
+        if i%config['grad_accumulation'] == 0:
+            optimizer.step()
+            optimizer.zero_grad()
+              
         metric_logger.update(lr=optimizer.param_groups[0]["lr"])
         metric_logger.update(loss=loss.item())
         
@@ -98,9 +101,7 @@ def evaluate(model, data_loader, tokenizer, device, config):
     return {k: "{:.4f}".format(meter.global_avg) for k, meter in metric_logger.meters.items()}
     
     
-def main(args, config):
-    utils.init_distributed_mode(args)    
-    
+def main(args, config):    
     device = torch.device(args.device)
 
     # fix the seed for reproducibility
@@ -114,12 +115,7 @@ def main(args, config):
     print("Creating dataset")
     datasets = create_dataset('nlvr', config) 
     
-    if args.distributed:
-        num_tasks = utils.get_world_size()
-        global_rank = utils.get_rank()            
-        samplers = create_sampler(datasets, [True, False, False], num_tasks, global_rank)         
-    else:
-        samplers = [None, None, None]
+    samplers = [None, None, None]
 
     train_loader, val_loader, test_loader = create_loader(datasets,samplers,batch_size=[config['batch_size']]*3,
                                               num_workers=[4,4,4],is_trains=[True,False,False], collate_fns=[None,None,None])
@@ -148,10 +144,6 @@ def main(args, config):
     model = model.to(device)   
     
     model_without_ddp = model
-    if args.distributed:
-        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu])
-        model_without_ddp = model.module    
-    
     arg_opt = utils.AttrDict(config['optimizer'])
     optimizer = create_optimizer(arg_opt, model)
     arg_sche = utils.AttrDict(config['schedular'])
@@ -166,8 +158,6 @@ def main(args, config):
     best_epoch = 0
 
     for epoch in range(0, max_epoch):
-        if args.distributed:
-            train_loader.sampler.set_epoch(epoch)
         
         train_stats = train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)   
         val_stats = evaluate(model, val_loader, tokenizer, device, config)
@@ -181,14 +171,14 @@ def main(args, config):
                         }
                        
             if float(val_stats['acc'])>best:
-                save_obj = {
-                    'model': model_without_ddp.state_dict(),
-                    'optimizer': optimizer.state_dict(),
-                    'lr_scheduler': lr_scheduler.state_dict(),
-                    'config': config,
-                    'epoch': epoch,
-                }
-                torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_%02d.pth'%epoch)) 
+                # save_obj = {
+                #     'model': model_without_ddp.state_dict(),
+                #     'optimizer': optimizer.state_dict(),
+                #     'lr_scheduler': lr_scheduler.state_dict(),
+                #     'config': config,
+                #     'epoch': epoch,
+                # }
+                # torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_%02d.pth'%epoch)) 
                 best = float(val_stats['acc'])
                 best_epoch = epoch
             
@@ -196,7 +186,6 @@ def main(args, config):
                 f.write(json.dumps(log_stats) + "\n")
         
         lr_scheduler.step(epoch+warmup_steps+1)  
-        dist.barrier()   
                 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
