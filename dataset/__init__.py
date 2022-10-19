@@ -3,11 +3,8 @@ from torch.utils.data import DataLoader
 from torchvision import transforms
 from PIL import Image
 
-from dataset.caption_dataset import re_train_dataset, re_eval_dataset, pretrain_dataset
 from dataset.nlvr_dataset import nlvr_dataset
-from dataset.ve_dataset import ve_dataset
-from dataset.vqa_dataset import vqa_dataset
-from dataset.grounding_dataset import grounding_dataset
+from dataset.imagecode_dataset import ImageCoDeDataset, PairedImageCoDeDataset, InferenceImageCoDeDataset
 
 from dataset.randaugment import RandomAugment
 
@@ -37,57 +34,21 @@ def create_dataset(dataset, config):
         normalize,
         ])   
     
-    if dataset=='pretrain':
-        dataset = pretrain_dataset(config['train_file'], pretrain_transform)                  
-        return dataset      
-               
-    elif dataset=='re':          
-        train_dataset = re_train_dataset(config['train_file'], train_transform, config['image_root'])
-        val_dataset = re_eval_dataset(config['val_file'], test_transform, config['image_root'])  
-        test_dataset = re_eval_dataset(config['test_file'], test_transform, config['image_root'])                
-        return train_dataset, val_dataset, test_dataset   
-
-    elif dataset=='vqa': 
-        train_dataset = vqa_dataset(config['train_file'], train_transform, config['vqa_root'], config['vg_root'], split='train') 
-        vqa_test_dataset = vqa_dataset(config['test_file'], test_transform, config['vqa_root'], config['vg_root'], split='test', answer_list=config['answer_list'])       
-        return train_dataset, vqa_test_dataset
-
-    elif dataset=='nlvr':   
+    if dataset=='nlvr':   
         train_dataset = nlvr_dataset(config['train_file'], train_transform, config['image_root'])  
         val_dataset = nlvr_dataset(config['val_file'], test_transform, config['image_root'])  
         test_dataset = nlvr_dataset(config['test_file'], test_transform, config['image_root'])                
         return train_dataset, val_dataset, test_dataset        
                
-    elif dataset=='ve':   
-        train_dataset = ve_dataset(config['train_file'], train_transform, config['image_root'])  
-        val_dataset = ve_dataset(config['val_file'], test_transform, config['image_root'])  
-        test_dataset = ve_dataset(config['test_file'], test_transform, config['image_root'])                
-        return train_dataset, val_dataset, test_dataset     
-    
-    elif dataset=='grounding':
-        train_transform = transforms.Compose([                        
-                transforms.Resize((config['image_res'],config['image_res']),interpolation=Image.BICUBIC),
-                transforms.RandomHorizontalFlip(),
-                RandomAugment(2,7,isPIL=True,augs=['Identity','AutoContrast','Equalize','Brightness','Sharpness',
-                                                  'ShearX', 'ShearY', 'TranslateX', 'TranslateY', 'Rotate']),     
-                transforms.ToTensor(),
-                normalize,
-            ])         
-        train_dataset = grounding_dataset(config['train_file'], train_transform, config['image_root'], mode='train')       
-        test_dataset = grounding_dataset(config['test_file'], test_transform, config['image_root'], mode='test')             
-        return train_dataset, test_dataset    
-    
-
-def vqa_collate_fn(batch):
-    image_list, question_list, answer_list, weight_list, n = [], [], [], [], []
-    for image, question, answer, weights in batch:
-        image_list.append(image)
-        question_list.append(question)
-        weight_list += weights       
-        answer_list += answer
-        n.append(len(answer))
-    return torch.stack(image_list,dim=0), question_list, answer_list, torch.Tensor(weight_list), n
-
+    elif dataset=='imagecode':
+        if config['random_pair_sampling']:
+            train_dataset = PairedImageCoDeDataset(train_transform, '../imagecode/data', 'train', video_only=config['video_only'], max_words=config['max_words'])
+        else:
+            train_dataset = ImageCoDeDataset(train_transform, '../imagecode/data', 'train', video_only=config['video_only'], max_words=config['max_words'])
+        val_dataset = PairedImageCoDeDataset(test_transform, '../imagecode/data','valid', video_only=config['video_only'], max_words=config['max_words'])
+        inference_val_dataset = InferenceImageCoDeDataset(test_transform, '../imagecode/data','valid', video_only=config['video_only'], max_words=config['max_words'])
+        # test_dataset = ImageCoDeDataset(transform_test, '../imagecode/data', 'test')     
+        return train_dataset, val_dataset, inference_val_dataset
 
 def create_sampler(datasets, shuffles, num_tasks, global_rank):
     samplers = []
