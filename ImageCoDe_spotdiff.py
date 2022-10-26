@@ -27,6 +27,7 @@ from dataset import create_dataset, create_sampler, create_loader
 from scheduler import create_scheduler
 from optim import create_optimizer
 import wandb
+from dataset.multitask_loader import MultiTaskLoader
 
 
 def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, config):
@@ -41,7 +42,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     print_freq = 50   
     step_size = 100
     warmup_iterations = warmup_steps*step_size  
- 
+
     for i,(image0, image1, text, targets, is_video) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         images = torch.cat([image0, image1], dim=0)
         images, targets = images.to(device), targets.to(device)   
@@ -214,13 +215,21 @@ def main(args, config):
 
     #### Dataset #### 
     print("Creating dataset")
-    datasets = create_dataset('imagecode', config) 
+
+    tasks = ['imagecode', 'spotdiff']
+    dataloaders_train = {}
+    dataloaders_val = {}
+    for task in tasks:
+
+        datasets = create_dataset('spotdiff', config)
+        train_loader, val_loader = create_loader(datasets, [None, None], batch_size=[config['batch_size']]*2,
+                                                    num_workers=[4,4],is_trains=[True,False], collate_fns=[None,None])
+        dataloaders_train[task] = train_loader
+        dataloaders_val[task] = val_loader
+
+    multi_loader_train = MultiTaskLoader(dataloaders_train)
+    multi_loader_val = MultiTaskLoader(dataloaders_val)
     
-    samplers = [None, None, None]
-
-    train_loader, val_loader, fullset_val_loader = create_loader(datasets,samplers,batch_size=[config['batch_size']]*3,
-                                              num_workers=[4,4,4],is_trains=[True,False,False], collate_fns=[None,None,None])
-
     tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
 
     #### Model #### 
@@ -263,15 +272,13 @@ def main(args, config):
     for epoch in range(0, max_epoch):
         if not args.evaluate:
             if config['random_pair_sampling']:
-                train_stats = train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)  
+                train_stats = train(model, multi_loader_train, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)  
             else: 
-                train_stats = train_hard_neg(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)  
+                train_stats = train_hard_neg(model, multi_loader_val, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)  
         else:
             train_stats = {}
 
-        if args.inference_eval:
-            acc, vid_acc = evaluate_fullset(model, fullset_val_loader, tokenizer, device, config)
-        val_stats = evaluate(model, val_loader, tokenizer, device, config)
+        val_stats = evaluate(model, dataloaders_val, tokenizer, device, config)
 
         wandb.log({'Val_acc': float(val_stats['acc']), 'Val_video_acc': float(val_stats['video_acc'])})
 

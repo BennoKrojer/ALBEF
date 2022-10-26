@@ -5,7 +5,7 @@ from PIL import Image
 
 from dataset.nlvr_dataset import nlvr_dataset
 from dataset.imagecode_dataset import ImageCoDeDataset, PairedImageCoDeDataset, InferenceImageCoDeDataset
-
+from dataset.spotdiff_dataset import SpotdiffClassificationDataset
 from dataset.randaugment import RandomAugment
 
 def create_dataset(dataset, config):
@@ -42,13 +42,17 @@ def create_dataset(dataset, config):
                
     elif dataset=='imagecode':
         if config['random_pair_sampling']:
-            train_dataset = PairedImageCoDeDataset(train_transform, '../imagecode/data', 'train', video_only=config['video_only'], max_words=config['max_words'])
+            train_dataset = PairedImageCoDeDataset(train_transform, '../imagecode/data', 'train', video_only=config['video_only'], debug=config['debug'])
         else:
-            train_dataset = ImageCoDeDataset(train_transform, '../imagecode/data', 'train', video_only=config['video_only'], max_words=config['max_words'])
-        val_dataset = PairedImageCoDeDataset(test_transform, '../imagecode/data','valid', video_only=config['video_only'], max_words=config['max_words'])
-        inference_val_dataset = InferenceImageCoDeDataset(test_transform, '../imagecode/data','valid', video_only=config['video_only'], max_words=config['max_words'])
-        # test_dataset = ImageCoDeDataset(transform_test, '../imagecode/data', 'test')     
+            train_dataset = ImageCoDeDataset(train_transform, '../imagecode/data', 'train', video_only=config['video_only'], debug=config['debug'])
+        val_dataset = PairedImageCoDeDataset(test_transform, '../imagecode/data','valid', video_only=config['video_only'], debug=config['debug'])
+        inference_val_dataset = InferenceImageCoDeDataset(test_transform, '../imagecode/data','valid', video_only=config['video_only'], debug=config['debug'])
         return train_dataset, val_dataset, inference_val_dataset
+    
+    elif dataset=='spotdiff':
+        train_dataset = SpotdiffClassificationDataset(train_transform, '../spotdiff/data', 'train', debug=config['debug'])
+        val_dataset = SpotdiffClassificationDataset(test_transform, '../spotdiff/data', 'val', debug=config['debug'])
+        return train_dataset, val_dataset
 
 def create_sampler(datasets, shuffles, num_tasks, global_rank):
     samplers = []

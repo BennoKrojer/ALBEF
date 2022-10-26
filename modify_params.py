@@ -5,29 +5,43 @@ import os
 import numpy as np
 from sklearn.model_selection import ParameterSampler, ParameterGrid
 
-from space_conf import space
+from space_conf_modify import space, init
 print(space)
 
 
 def main(args):
     out_dir = args.output
     os.makedirs(out_dir, exist_ok=True)
+    args.n = int(args.n)
+    fn = os.path.join(out_dir, 'modified_params')
+    ps = []
 
-    fn = os.path.join(out_dir, 'params')
+    for i in range(args.n):
 
-    if args.n.lower() == 'all':
-        ps = ParameterGrid(space)
-    else:
-        n = int(args.n)
-        rng = np.random.RandomState(args.seed)
-        ps = ParameterSampler(space, n_iter=n, random_state=rng)
+        new_params = {}
+        change_idx = np.random.randint(0, len(space))
+        change_key = list(space.keys())[change_idx]
+        change_vals = space[change_key].copy()
+        change_vals.remove(init[change_key])
+        new_val = np.random.choice(change_vals)
+        new_params[change_key] = new_val
+
+        for j in range(len(space)):
+            if j != change_idx:
+                if 0.3 < np.random.rand():
+                    key = list(space.keys())[j]
+                    new_params[key] = init[key]
+                else:
+                    key = list(space.keys())[j]
+                    new_params[key] = np.random.choice(space[key])
+        ps.append(new_params)
 
     with open(fn, 'w') as fp:
         for p in ps:
             p_str = ' '.join([args.format.format(name=k, value=v) for k, v in p.items()])
             if args.extra:
                 p_str = args.extra + ' ' + p_str
-            fp.write('sbatch --gres=gpu:rtx8000:1 --mem=48G run.sh main_task_retrieval.py ' + p_str + '\n')
+            fp.write('sbatch --gres=gpu:rtx8000:1 --mem=48G run.sh ImageCoDe.py ' + p_str + '\n')
 
 
 if __name__ == '__main__':

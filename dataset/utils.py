@@ -39,8 +39,6 @@ def pre_caption(caption,max_words):
     return caption
 
 
-from vqaTools.vqaEval import VQAEval
-from refTools.evaluation.refEvaluation import RefEvaluation
 
 import json
 import os
@@ -51,25 +49,6 @@ import torch.nn.functional as F
 
 import utils
 from tqdm import tqdm
-
-
-def vqa_eval(vqa, result_file, test_ques_path):
-    vqaRes = vqa.loadRes(result_file, test_ques_path)
-    # create vqaEval object by taking vqa and vqaRes
-    vqaEval = VQAEval(vqa, vqaRes, n=2)  # n is precision of accuracy (number of places after decimal), default is 2
-    # evaluate results
-    vqaEval.evaluate()   
-
-    # print accuracies
-    print("\n")
-    print("Overall Accuracy is: %.02f\n" % (vqaEval.accuracy['overall']))
-    print("Per Answer Type Accuracy is the following:")
-    for ansType in vqaEval.accuracy['perAnswerType']:
-        print("%s : %.02f" % (ansType, vqaEval.accuracy['perAnswerType'][ansType]))
-    print("\n")    
-    
-    return vqaEval
-
 
     
 def collect_result(result, result_dir, filename, is_json=True, is_list=True):
@@ -144,55 +123,6 @@ def save_result(result, result_dir, filename, is_json=True, is_list=True):
     dist.barrier()        
     return final_result_file
 
-
-
-def grounding_eval(results,dets,cocos,refer,alpha,mask_size=24):
-    
-    correct_A_d, correct_B_d, correct_val_d = 0, 0, 0
-    correct_A, correct_B, correct_val = 0, 0, 0 
-    num_A,num_B,num_val = 0,0,0
-    
-    for res in tqdm(results):
-
-        ref_id = res['ref_id']
-        ref = refer.Refs[ref_id]
-        ref_box = refer.refToAnn[ref_id]['bbox']
-        image = refer.Imgs[ref['image_id']]
-
-        mask = res['pred'].cuda().view(1,1,mask_size,mask_size)    
-        mask = F.interpolate(mask,size = (image['height'],image['width']), mode='bicubic').squeeze()
-        
-        # rank detection boxes
-        max_score = 0
-        for det in dets[str(ref['image_id'])]:
-            score = mask[int(det[1]):int(det[1]+det[3]),int(det[0]):int(det[0]+det[2])]
-            area = det[2]*det[3]
-            score = score.sum() / area**alpha
-            if score>max_score:
-                pred_box = det[:4]
-                max_score = score    
-
-        IoU_det = computeIoU(ref_box, pred_box)
-        
-        if ref['split']=='testA':
-            num_A += 1    
-            if IoU_det >= 0.5:   
-                correct_A_d += 1            
-        elif ref['split']=='testB':
-            num_B += 1    
-            if IoU_det >= 0.5:   
-                correct_B_d += 1    
-        elif ref['split']=='val':
-            num_val += 1    
-            if IoU_det >= 0.5:   
-                correct_val_d += 1    
-                
-    eval_result = {'val_d':correct_val_d/num_val,'testA_d':correct_A_d/num_A,'testB_d':correct_B_d/num_B}        
-    
-    for metric, acc in eval_result.items():
-        print(f'{metric}: {acc:.3f}')
-        
-    return eval_result    
 
 
 
