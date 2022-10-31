@@ -27,7 +27,7 @@ from dataset import create_dataset, create_sampler, create_loader
 from scheduler import create_scheduler
 from optim import create_optimizer
 import wandb
-from dataset.multitask_loader import MultiTaskLoader
+from dataset.multitask_loader import MultitaskDataloader, DataLoaderWithTaskname
 
 
 def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, scheduler, config):
@@ -43,7 +43,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     step_size = 100
     warmup_iterations = warmup_steps*step_size  
 
-    for i,(image0, image1, text, targets, is_video) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for i,(task_name, image0, image1, text, targets, is_video, img_dir) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         images = torch.cat([image0, image1], dim=0)
         images, targets = images.to(device), targets.to(device)   
         
@@ -86,13 +86,15 @@ def train_hard_neg(model, data_loader, optimizer, tokenizer, epoch, warmup_steps
     step_size = 100
     warmup_iterations = warmup_steps*step_size  
 
-    for i,(img0, img1, text, targets, is_video, img_dir) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-        img0 = img0.flatten(0,1)
-        img1 = img1.flatten(0,1)
-        texts = []
-        for t in text:
-            texts += [t]*9
-        targets = targets.flatten()
+    for i,(task_name, img0, img1, text, targets, is_video, img_dir) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        if task_name == 'imagecode':
+            img0 = img0.flatten(0,1)
+            img1 = img1.flatten(0,1)
+            texts = []
+            for t in text:
+                texts += [t]*9
+            targets = targets.flatten()
+            
         images = torch.cat([img0, img1], dim=0)
         images, targets = images.to(device), targets.to(device)   
 
@@ -132,7 +134,7 @@ def evaluate(model, data_loader, tokenizer, device, config):
 
     header = 'Evaluation:'
     print_freq = 50
-    for image0, image1, text, targets, is_video in metric_logger.log_every(data_loader, print_freq, header):
+    for image0, image1, text, targets, is_video, img_dir in metric_logger.log_every(data_loader, print_freq, header):
         images = torch.cat([image0, image1], dim=0)
         images, targets = images.to(device), targets.to(device)   
         
@@ -216,19 +218,20 @@ def main(args, config):
     #### Dataset #### 
     print("Creating dataset")
 
-    tasks = ['imagecode', 'spotdiff']
     dataloaders_train = {}
     dataloaders_val = {}
-    for task in tasks:
-
-        datasets = create_dataset('spotdiff', config)
-        train_loader, val_loader = create_loader(datasets, [None, None], batch_size=[config['batch_size']]*2,
+    for task in args.tasks:
+        if task == 'imagecode' and not config['random_pair_sampling']:
+            batch_size = config['batch_size'] // 8
+        else:
+            batch_size = config['batch_size']
+        datasets = create_dataset(task, config)
+        train_loader, val_loader = create_loader(datasets, [None, None], batch_size=[batch_size]*2,
                                                     num_workers=[4,4],is_trains=[True,False], collate_fns=[None,None])
-        dataloaders_train[task] = train_loader
+        dataloaders_train[task] = DataLoaderWithTaskname(task, train_loader)
         dataloaders_val[task] = val_loader
 
-    multi_loader_train = MultiTaskLoader(dataloaders_train)
-    multi_loader_val = MultiTaskLoader(dataloaders_val)
+    multi_loader_train = MultitaskDataloader(dataloaders_train)
     
     tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
 
@@ -274,11 +277,11 @@ def main(args, config):
             if config['random_pair_sampling']:
                 train_stats = train(model, multi_loader_train, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)  
             else: 
-                train_stats = train_hard_neg(model, multi_loader_val, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)  
+                train_stats = train_hard_neg(model, multi_loader_train, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)  
         else:
             train_stats = {}
 
-        val_stats = evaluate(model, dataloaders_val, tokenizer, device, config)
+        val_stats = evaluate(model, dataloaders_val['imagecode'], tokenizer, device, config)
 
         wandb.log({'Val_acc': float(val_stats['acc']), 'Val_video_acc': float(val_stats['video_acc'])})
 
@@ -320,14 +323,13 @@ if __name__ == '__main__':
     parser.add_argument('--checkpoint', default='pretrain_model_nlvr.pth', type=str)
     parser.add_argument('--output_dir', default='output/imagecode')
     parser.add_argument('--evaluate', action='store_true')     
-    parser.add_argument('--debug', action='store_true') 
+    parser.add_argument('--debug', action='store_true')
     parser.add_argument('--device', default='cuda')
     parser.add_argument('--text_encoder', default='bert-base-uncased')
     parser.add_argument('--seed', default=42, type=int)
     parser.add_argument('--world_size', default=1, type=int, help='number of distributed processes')    
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
     parser.add_argument('--distributed', default=False, type=bool)
-    parser.add_argument('--batchsize', default=16, type=int)
     parser.add_argument('--grad_accumulation', default=64, type=int)
     parser.add_argument('--lr', type=float, default=9e-6)
     parser.add_argument('--min_lr', type=float, default=1e-6)
@@ -339,8 +341,11 @@ if __name__ == '__main__':
     parser.add_argument('--distill', type=str, default='True')
     parser.add_argument('--pretrained_cls_head', type=str, default='True')
     parser.add_argument('--inference_eval', action='store_true')
+    parser.add_argument('--tasks', type=str, default='imagecode,spotdiff')
     parser.add_argument('--job_id', type=str)
     args = parser.parse_args()
+
+    args.tasks = args.tasks.split(',')
 
     if args.debug:
         wandb.init(project='Debug-can-be-deleted', settings=wandb.Settings(start_method='fork'))
@@ -367,9 +372,6 @@ if __name__ == '__main__':
     config['pretrained'] = args.checkpoint
     config['pretrained_cls_head'] = args.pretrained_cls_head
     config['debug'] = args.debug
-
-    if not config['random_pair_sampling']:
-        config['batch_size'] = config['batch_size'] // 8
     
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         

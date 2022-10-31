@@ -42,7 +42,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     step_size = 100
     warmup_iterations = warmup_steps*step_size  
  
-    for i,(image0, image1, text, targets, is_video) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for i,(image0, image1, text, targets, is_video, img_dir) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         images = torch.cat([image0, image1], dim=0)
         images, targets = images.to(device), targets.to(device)   
         
@@ -131,7 +131,7 @@ def evaluate(model, data_loader, tokenizer, device, config):
 
     header = 'Evaluation:'
     print_freq = 50
-    for image0, image1, text, targets, is_video in metric_logger.log_every(data_loader, print_freq, header):
+    for image0, image1, text, targets, is_video, img_dir in metric_logger.log_every(data_loader, print_freq, header):
         images = torch.cat([image0, image1], dim=0)
         images, targets = images.to(device), targets.to(device)   
         
@@ -214,12 +214,12 @@ def main(args, config):
 
     #### Dataset #### 
     print("Creating dataset")
-    datasets = create_dataset('imagecode', config) 
+    datasets = create_dataset('imagecode', config, fullset=True)
     
-    samplers = [None, None, None]
+    samplers = [None, None]
 
-    train_loader, val_loader, fullset_val_loader = create_loader(datasets,samplers,batch_size=[config['batch_size']]*3,
-                                              num_workers=[4,4,4],is_trains=[True,False,False], collate_fns=[None,None,None])
+    train_loader, val_loader = create_loader(datasets,samplers,batch_size=[config['batch_size']]*2,
+                                              num_workers=[4,4],is_trains=[True,False,False], collate_fns=[None,None])
 
     tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
 
@@ -269,8 +269,8 @@ def main(args, config):
         else:
             train_stats = {}
 
-        if args.inference_eval:
-            acc, vid_acc = evaluate_fullset(model, fullset_val_loader, tokenizer, device, config)
+        # if args.inference_eval:
+        #     acc, vid_acc = evaluate_fullset(model, fullset_val_loader, tokenizer, device, config)
         val_stats = evaluate(model, val_loader, tokenizer, device, config)
 
         wandb.log({'Val_acc': float(val_stats['acc']), 'Val_video_acc': float(val_stats['video_acc'])})
@@ -332,7 +332,7 @@ if __name__ == '__main__':
     parser.add_argument('--distill', type=str, default='True')
     parser.add_argument('--pretrained_cls_head', type=str, default='True')
     parser.add_argument('--inference_eval', action='store_true')
-    parser.add_argument('--job_id', type=str)
+    parser.add_argument('--job_id', type=str, default="")
     args = parser.parse_args()
 
     if args.debug:

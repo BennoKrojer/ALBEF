@@ -15,10 +15,13 @@ from PIL import Image
 
 class SpotdiffClassificationDataset(Dataset):
 
-    def __init__(self, data_dir, split, config, transform):
+    def __init__(self, transform, split, debug=False):
+        data_dir = '/home/mila/b/benno.krojer/scratch/spotdiff'
         super().__init__()
         assert split in ['train', 'val']
         self.transform = transform
+        self.debug = debug
+        
         self.data = self.load_data(data_dir, split)
 
     def load_data(self, data_dir, split):
@@ -35,24 +38,26 @@ class SpotdiffClassificationDataset(Dataset):
             image0_file = os.path.join(data_dir, "resized_images", img_id+".png")
             image1_file = os.path.join(data_dir, "resized_images", img_id+"_2.png")
             if random.rand() > 0.5:
-                target = 1
+                target = 0
                 images = [image0_file,image1_file]
             else:
-                target = 0
+                target = 1
                 images = [image1_file,image0_file]
             
-            img = torch.stack(images, dim=0)
-            dataset.append((img, text, target))
+            # img = torch.stack(images, dim=0)
+            dataset.append((images, text, target))
+        if self.debug:
+            dataset = dataset[:120]
 
         return dataset
     
     def __getitem__(self, idx):
-        img, text, target, is_video = self.data[idx]
+        img, text, target = self.data[idx]
         file0, file1 = img
         image0 = self.transform(Image.open(file0).convert('RGB'))
         image1 = self.transform(Image.open(file1).convert('RGB'))
-        imgs = [image0, image1]
-        return imgs, text, target
+
+        return image0, image1, text, target, 1, ''
 
 
     

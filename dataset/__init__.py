@@ -8,7 +8,7 @@ from dataset.imagecode_dataset import ImageCoDeDataset, PairedImageCoDeDataset, 
 from dataset.spotdiff_dataset import SpotdiffClassificationDataset
 from dataset.randaugment import RandomAugment
 
-def create_dataset(dataset, config):
+def create_dataset(dataset, config, fullset=False):
     
     normalize = transforms.Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711))
     
@@ -33,7 +33,7 @@ def create_dataset(dataset, config):
         transforms.ToTensor(),
         normalize,
         ])   
-    
+
     if dataset=='nlvr':   
         train_dataset = nlvr_dataset(config['train_file'], train_transform, config['image_root'])  
         val_dataset = nlvr_dataset(config['val_file'], test_transform, config['image_root'])  
@@ -46,12 +46,12 @@ def create_dataset(dataset, config):
         else:
             train_dataset = ImageCoDeDataset(train_transform, '../imagecode/data', 'train', video_only=config['video_only'], debug=config['debug'])
         val_dataset = PairedImageCoDeDataset(test_transform, '../imagecode/data','valid', video_only=config['video_only'], debug=config['debug'])
-        inference_val_dataset = InferenceImageCoDeDataset(test_transform, '../imagecode/data','valid', video_only=config['video_only'], debug=config['debug'])
-        return train_dataset, val_dataset, inference_val_dataset
+        # inference_val_dataset = InferenceImageCoDeDataset(test_transform, '../imagecode/data','valid', video_only=config['video_only'], debug=config['debug'])
+        return train_dataset, val_dataset#, inference_val_dataset
     
     elif dataset=='spotdiff':
-        train_dataset = SpotdiffClassificationDataset(train_transform, '../spotdiff/data', 'train', debug=config['debug'])
-        val_dataset = SpotdiffClassificationDataset(test_transform, '../spotdiff/data', 'val', debug=config['debug'])
+        train_dataset = SpotdiffClassificationDataset(train_transform, 'train', debug=config['debug'])
+        val_dataset = SpotdiffClassificationDataset(test_transform, 'val', debug=config['debug'])
         return train_dataset, val_dataset
 
 def create_sampler(datasets, shuffles, num_tasks, global_rank):

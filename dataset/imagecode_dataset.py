@@ -62,7 +62,7 @@ class PairedImageCoDeDataset(Dataset):
 
         is_video = torch.tensor(1 if 'open-images' not in img_dir else 0)
         
-        return img1, img2, sentence, label, is_video
+        return img1, img2, sentence, label, is_video, img_dir
     
     def __len__(self):
         return len(self.data)

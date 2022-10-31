@@ -14,10 +14,11 @@ from PIL import Image
 
 class ClevrChangeClassificationDataset(Dataset):
 
-    def __init__(self, data_dir, split, config, transform):
+    def __init__(self, split, config, transform):
         super().__init__()
         assert split in ['train', 'val']
 
+        data_dir = '/home/mila/b/benno.krojer/scratch/clevr_change'
         self.captions =  self.load_captions(data_dir)
         self.data = self.load_data(data_dir, split)
         self.transform = transform

@@ -39,36 +39,32 @@ class MultitaskDataloader:
     data loaders.
     """
 
-    def __init__(self, dataloader_dict):
+    def __init__(self, dataloader_dict, sample_ratios=None):
         self.dataloader_dict = dataloader_dict
+        self.sample_ratios = list(sample_ratios.values()) if sample_ratios else None
         self.num_batches_dict = {
             task_name: len(dataloader)
             for task_name, dataloader in self.dataloader_dict.items()
         }
+        self.max_num_batches = max(self.num_batches_dict.values())
         self.task_name_list = list(self.dataloader_dict)
         self.dataset = [None] * sum(
             len(dataloader.dataset) for dataloader in self.dataloader_dict.values()
         )
 
+        self.iters = {task_name: iter(dataloader) for task_name, dataloader in self.dataloader_dict.items()}
+
     def __len__(self):
-        return sum(self.num_batches_dict.values())
+        return self.max_num_batches*len(self.task_name_list)
 
     def __iter__(self):
         """
-        For each batch, sample a task, and yield a batch from the respective
-        task Dataloader.
-        We use size-proportional sampling, but you could easily modify this
-        to sample from some-other distribution.
-        """
-        task_choice_list = []
-        for i, task_name in enumerate(self.task_name_list):
-            task_choice_list += [i] * self.num_batches_dict[task_name]
-        task_choice_list = np.array(task_choice_list)
-        np.random.shuffle(task_choice_list)
-        dataloader_iter_dict = {
-            task_name: iter(dataloader)
-            for task_name, dataloader in self.dataloader_dict.items()
-        }
-        for task_choice in task_choice_list:
-            task_name = self.task_name_list[task_choice]
-            yield next(dataloader_iter_dict[task_name])
+        Sample randomly a task with equal probability. When the dataloader reaches its end, reset it."""
+
+        for _ in range(self.max_num_batches*len(self.task_name_list)):
+            task_name = np.random.choice(self.task_name_list, p=self.sample_ratios)
+            try:
+                yield next(self.iters[task_name])
+            except StopIteration:
+                self.iters[task_name] = iter(self.dataloader_dict[task_name])
+                yield next(self.iters[task_name])
