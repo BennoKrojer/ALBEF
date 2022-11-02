@@ -87,6 +87,7 @@ def train_hard_neg(model, data_loader, optimizer, tokenizer, epoch, warmup_steps
     warmup_iterations = warmup_steps*step_size  
 
     for i,(task_name, img0, img1, text, targets, is_video, img_dir) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        print(task_name)
         if task_name == 'imagecode':
             img0 = img0.flatten(0,1)
             img1 = img1.flatten(0,1)
@@ -231,7 +232,7 @@ def main(args, config):
         dataloaders_train[task] = DataLoaderWithTaskname(task, train_loader)
         dataloaders_val[task] = val_loader
 
-    multi_loader_train = MultitaskDataloader(dataloaders_train)
+    multi_loader_train = MultitaskDataloader(dataloaders_train, sample_ratios=args.sample_ratios)
     
     tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
 
@@ -342,10 +343,12 @@ if __name__ == '__main__':
     parser.add_argument('--pretrained_cls_head', type=str, default='True')
     parser.add_argument('--inference_eval', action='store_true')
     parser.add_argument('--tasks', type=str, default='imagecode,spotdiff')
+    parser.add_argument('--sample_ratios', type=str, default='')
     parser.add_argument('--job_id', type=str)
     args = parser.parse_args()
 
     args.tasks = args.tasks.split(',')
+    args.sample_ratios = [float(x) for x in args.sample_ratios.split(',')]
 
     if args.debug:
         wandb.init(project='Debug-can-be-deleted', settings=wandb.Settings(start_method='fork'))
@@ -372,6 +375,8 @@ if __name__ == '__main__':
     config['pretrained'] = args.checkpoint
     config['pretrained_cls_head'] = args.pretrained_cls_head
     config['debug'] = args.debug
+    config['tasks'] = args.tasks
+    config['sample_ratios'] = args.sample_ratios
     
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         

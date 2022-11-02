@@ -41,7 +41,7 @@ class MultitaskDataloader:
 
     def __init__(self, dataloader_dict, sample_ratios=None):
         self.dataloader_dict = dataloader_dict
-        self.sample_ratios = list(sample_ratios.values()) if sample_ratios else None
+        self.sample_ratios = [x/sum(sample_ratios) for x in sample_ratios]
         self.num_batches_dict = {
             task_name: len(dataloader)
             for task_name, dataloader in self.dataloader_dict.items()
@@ -55,13 +55,13 @@ class MultitaskDataloader:
         self.iters = {task_name: iter(dataloader) for task_name, dataloader in self.dataloader_dict.items()}
 
     def __len__(self):
-        return self.max_num_batches*len(self.task_name_list)
+        return sum(self.num_batches_dict.values())
 
     def __iter__(self):
         """
         Sample randomly a task with equal probability. When the dataloader reaches its end, reset it."""
 
-        for _ in range(self.max_num_batches*len(self.task_name_list)):
+        for _ in range(len(self)):
             task_name = np.random.choice(self.task_name_list, p=self.sample_ratios)
             try:
                 yield next(self.iters[task_name])

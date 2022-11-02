@@ -33,19 +33,19 @@ class SpotdiffClassificationDataset(Dataset):
         for i, row in tqdm(enumerate(json_file), total=len(json_file)):
             img_id = row["img_id"]
             text = row["sentences"]
-            text = ". ".join(text)
-            # get two different images
-            image0_file = os.path.join(data_dir, "resized_images", img_id+".png")
-            image1_file = os.path.join(data_dir, "resized_images", img_id+"_2.png")
-            if random.rand() > 0.5:
-                target = 0
-                images = [image0_file,image1_file]
-            else:
-                target = 1
-                images = [image1_file,image0_file]
-            
-            # img = torch.stack(images, dim=0)
-            dataset.append((images, text, target))
+            for sent in text:
+                # get two different images
+                image0_file = os.path.join(data_dir, "resized_images", img_id+".png")
+                image1_file = os.path.join(data_dir, "resized_images", img_id+"_2.png")
+                if random.rand() > 0.5:
+                    target = 1
+                    images = [image0_file,image1_file]
+                else:
+                    target = 0
+                    images = [image1_file,image0_file]
+                
+                # img = torch.stack(images, dim=0)
+                dataset.append((images, text, target))
         if self.debug:
             dataset = dataset[:120]
 

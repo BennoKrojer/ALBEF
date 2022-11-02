@@ -3,6 +3,7 @@ import os
 from torch.utils.data import Dataset
 from PIL import Image
 from dataset.utils import pre_caption
+import numpy as np
 
 
 class nlvr_dataset(Dataset):
@@ -37,5 +38,7 @@ class nlvr_dataset(Dataset):
             label = 1
         else:
             label = 0
-
+        
+        if np.random.rand() < 0.5:
+            image0, image1 = image1, image0
         return image0, image1, sentence, label
