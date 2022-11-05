@@ -6,6 +6,11 @@ from PIL import Image
 from dataset.nlvr_dataset import nlvr_dataset
 from dataset.imagecode_dataset import ImageCoDeDataset, PairedImageCoDeDataset, InferenceImageCoDeDataset
 from dataset.spotdiff_dataset import SpotdiffClassificationDataset
+from dataset.clevr_change_dataset import ClevrClassificationDataset
+from dataset.img_edit_dataset import ImgEditClassificationDataset
+from dataset.moment_dataset import MomentClassificationDataset
+from dataset.naturalist_dataset import NaturalistClassificationDataset
+from dataset.svo_dataset import SVOClassificationDataset
 from dataset.randaugment import RandomAugment
 
 def create_dataset(dataset, config, fullset=False):
@@ -35,10 +40,10 @@ def create_dataset(dataset, config, fullset=False):
         ])   
 
     if dataset=='nlvr':   
-        train_dataset = nlvr_dataset(config['train_file'], train_transform, config['image_root'])  
-        val_dataset = nlvr_dataset(config['val_file'], test_transform, config['image_root'])  
-        test_dataset = nlvr_dataset(config['test_file'], test_transform, config['image_root'])                
-        return train_dataset, val_dataset, test_dataset        
+        train_dataset = nlvr_dataset('train', train_transform)  
+        val_dataset = nlvr_dataset('dev', test_transform)  
+        # test_dataset = nlvr_dataset(config['test_file'], test_transform, config['image_root'])                
+        return train_dataset, val_dataset
                
     elif dataset=='imagecode':
         if config['random_pair_sampling']:
@@ -53,6 +58,32 @@ def create_dataset(dataset, config, fullset=False):
         train_dataset = SpotdiffClassificationDataset(train_transform, 'train', debug=config['debug'])
         val_dataset = SpotdiffClassificationDataset(test_transform, 'val', debug=config['debug'])
         return train_dataset, val_dataset
+
+    elif dataset == 'clevr':
+        train_dataset = ClevrClassificationDataset(train_transform, 'train', debug=config['debug'])
+        val_dataset = ClevrClassificationDataset(test_transform, 'val', debug=config['debug'])
+        return train_dataset, val_dataset
+
+    elif dataset == 'img-edit':
+        train_dataset = ImgEditClassificationDataset(train_transform, 'train', debug=config['debug'])
+        val_dataset = ImgEditClassificationDataset(test_transform, 'val', debug=config['debug'])
+        return train_dataset, val_dataset
+    
+    elif dataset == 'moment':
+        train_dataset = MomentClassificationDataset(train_transform, 'train', debug=config['debug'])
+        val_dataset = MomentClassificationDataset(test_transform, 'val', debug=config['debug'])
+        return train_dataset, val_dataset
+
+    elif dataset == 'naturalist':
+        train_dataset = NaturalistClassificationDataset(train_transform, 'train', debug=config['debug'])
+        val_dataset = NaturalistClassificationDataset(test_transform, 'val', debug=config['debug'])
+        return train_dataset, val_dataset
+
+    elif dataset == 'svo':
+        train_dataset = SVOClassificationDataset(train_transform, 'train', debug=config['debug'])
+        val_dataset = SVOClassificationDataset(test_transform, 'val', debug=config['debug'])
+        return train_dataset, val_dataset
+
 
 def create_sampler(datasets, shuffles, num_tasks, global_rank):
     samplers = []

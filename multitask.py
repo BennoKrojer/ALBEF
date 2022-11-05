@@ -54,7 +54,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
         else:
             alpha = config['alpha']*min(1,i/len(data_loader))        
 
-        loss = model(images, text_inputs, targets=targets, train=True, alpha=alpha) 
+        loss = model(images, text_inputs, targets=targets, train=True, alpha=alpha, task=task_name)
 
         loss.backward()  
         if i%config['grad_accumulation'] == 0:
@@ -87,7 +87,6 @@ def train_hard_neg(model, data_loader, optimizer, tokenizer, epoch, warmup_steps
     warmup_iterations = warmup_steps*step_size  
 
     for i,(task_name, img0, img1, text, targets, is_video, img_dir) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-        print(task_name)
         if task_name == 'imagecode':
             img0 = img0.flatten(0,1)
             img1 = img1.flatten(0,1)
@@ -106,7 +105,7 @@ def train_hard_neg(model, data_loader, optimizer, tokenizer, epoch, warmup_steps
         else:
             alpha = config['alpha']*min(1,i/len(data_loader))        
 
-        loss = model(images, text_inputs, targets=targets, train=True, alpha=alpha)    
+        loss = model(images, text_inputs, targets=targets, train=True, alpha=alpha, task=task_name)    
         
         loss.backward()  
         if i%config['grad_accumulation'] == 0:
@@ -141,7 +140,7 @@ def evaluate(model, data_loader, tokenizer, device, config):
         
         text_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device)  
 
-        prediction = model(images, text_inputs, targets=targets, train=False)  
+        prediction = model(images, text_inputs, targets=targets, train=False, task='imagecode') 
  
         _, pred_class = prediction.max(1)
         accuracy = (targets==pred_class).sum() / targets.size(0)
@@ -226,6 +225,7 @@ def main(args, config):
             batch_size = config['batch_size'] // 8
         else:
             batch_size = config['batch_size']
+        print('Loading dataset for task', task)
         datasets = create_dataset(task, config)
         train_loader, val_loader = create_loader(datasets, [None, None], batch_size=[batch_size]*2,
                                                     num_workers=[4,4],is_trains=[True,False], collate_fns=[None,None])
@@ -331,24 +331,27 @@ if __name__ == '__main__':
     parser.add_argument('--world_size', default=1, type=int, help='number of distributed processes')    
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
     parser.add_argument('--distributed', default=False, type=bool)
-    parser.add_argument('--grad_accumulation', default=64, type=int)
-    parser.add_argument('--lr', type=float, default=9e-6)
-    parser.add_argument('--min_lr', type=float, default=1e-6)
-    parser.add_argument('--warmup_lr', type=float, default=7e-6)
-    parser.add_argument('--max_epoch', type=int, default=15)
+    parser.add_argument('--grad_accumulation', default=128, type=int)
+    parser.add_argument('--lr', type=float, default=0.00003)
+    parser.add_argument('--min_lr', type=float, default=0.000003)
+    parser.add_argument('--warmup_lr', type=float, default=0.000002)
+    parser.add_argument('--max_epoch', type=int, default=20)
     parser.add_argument('--video_only', type=str, default='False')
     parser.add_argument('--random_pair_sampling', type=str, default='False')
-    parser.add_argument('--aug_prob', type=float, default=0.6)
+    parser.add_argument('--aug_prob', type=float, default=0.3)
     parser.add_argument('--distill', type=str, default='True')
     parser.add_argument('--pretrained_cls_head', type=str, default='True')
     parser.add_argument('--inference_eval', action='store_true')
-    parser.add_argument('--tasks', type=str, default='imagecode,spotdiff')
+    parser.add_argument('--tasks', type=str, default='imagecode,spotdiff,clevr,img-edit,moment,naturalist,nlvr,svo')
     parser.add_argument('--sample_ratios', type=str, default='')
     parser.add_argument('--job_id', type=str)
     args = parser.parse_args()
 
     args.tasks = args.tasks.split(',')
-    args.sample_ratios = [float(x) for x in args.sample_ratios.split(',')]
+    if args.sample_ratios == '':
+        args.sample_ratios = [1] * len(args.tasks)
+    else:
+        args.sample_ratios = [float(x) for x in args.sample_ratios.split(',')]
 
     if args.debug:
         wandb.init(project='Debug-can-be-deleted', settings=wandb.Settings(start_method='fork'))

@@ -53,9 +53,12 @@ class MultitaskDataloader:
         )
 
         self.iters = {task_name: iter(dataloader) for task_name, dataloader in self.dataloader_dict.items()}
+        
+        factor = 1 / self.num_batches_dict['imagecode']
+        self.len = int(self.num_batches_dict['imagecode'] * factor)
 
     def __len__(self):
-        return sum(self.num_batches_dict.values())
+        return self.len
 
     def __iter__(self):
         """
@@ -66,5 +69,6 @@ class MultitaskDataloader:
             try:
                 yield next(self.iters[task_name])
             except StopIteration:
+                print(f"Resetting {task_name} dataloader")
                 self.iters[task_name] = iter(self.dataloader_dict[task_name])
                 yield next(self.iters[task_name])

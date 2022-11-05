@@ -13,7 +13,7 @@ from torchvision import transforms
 from transformers import BertTokenizerFast
 from PIL import Image
 
-class SpotdiffClassificationDataset(Dataset):
+class GeneratedClassificationDataset(Dataset):
 
     def __init__(self, transform, split, debug=False):
         data_dir = '/home/mila/b/benno.krojer/scratch/spotdiff'

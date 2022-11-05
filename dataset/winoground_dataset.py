@@ -13,10 +13,10 @@ from torchvision import transforms
 from transformers import BertTokenizerFast
 from PIL import Image
 
-class SpotdiffClassificationDataset(Dataset):
+class WinogroundClassificationDataset(Dataset):
 
     def __init__(self, transform, split, debug=False):
-        data_dir = '/home/mila/b/benno.krojer/scratch/spotdiff'
+        data_dir = '/home/mila/b/benno.krojer/scratch/winoground'
         super().__init__()
         assert split in ['train', 'val']
         self.transform = transform
@@ -31,35 +31,24 @@ class SpotdiffClassificationDataset(Dataset):
 
         dataset = []
         for i, row in tqdm(enumerate(json_file), total=len(json_file)):
-            img_id = row["img_id"]
-            text = row["sentences"]
-            text = ". ".join(text)
+            img_id = row["id"]
+            caption0 = row["caption_0"]
+            caption1 = row["caption_1"]
             # get two different images
-            image0_file = os.path.join(data_dir, "resized_images", img_id+".png")
-            image1_file = os.path.join(data_dir, "resized_images", img_id+"_2.png")
-            if random.rand() > 0.5:
-                target = 0
-                images = [image0_file,image1_file]
-            else:
-                target = 1
-                images = [image1_file,image0_file]
-            
-            # img = torch.stack(images, dim=0)
-            dataset.append((images, text, target))
+            img0 = os.path.join(data_dir, "images", f'ex_{img_id}_img_0.jpg')
+            img1 = os.path.join(data_dir, "images", f'ex_{img_id}_img_1.jpg')
+            dataset.append((img0, img1, caption0, caption1))
         if self.debug:
             dataset = dataset[:120]
 
         return dataset
     
     def __getitem__(self, idx):
-        img, text, target = self.data[idx]
-        file0, file1 = img
-        image0 = self.transform(Image.open(file0).convert('RGB'))
-        image1 = self.transform(Image.open(file1).convert('RGB'))
+        img0, img1, text0, text1 = self.data[idx]
+        image0 = self.transform(Image.open(img0).convert('RGB'))
+        image1 = self.transform(Image.open(img1).convert('RGB'))
 
-        return image0, image1, text, target, 1, ''
+        return image0, image1, text0, text1
 
-
-    
     def __len__(self):
         return len(self.data)

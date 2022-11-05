@@ -7,13 +7,14 @@ import numpy as np
 
 
 class nlvr_dataset(Dataset):
-    def __init__(self, ann_file, transform, image_root):        
+    def __init__(self, split, transform):        
         # self.ann = []
         # for f in ann_file:
         #     self.ann += json.load(open(f,'r'))
-        self.ann = json.load(open(ann_file,'r'))
+        data_dir = '/home/mila/b/benno.krojer/scratch/nlvr2'
+        self.ann = json.load(open(data_dir+'/annotation/'+split+'.json','r'))
         self.transform = transform
-        self.image_root = image_root
+        self.image_root = data_dir
         self.max_words = 30
         
     def __len__(self):
@@ -41,4 +42,4 @@ class nlvr_dataset(Dataset):
         
         if np.random.rand() < 0.5:
             image0, image1 = image1, image0
-        return image0, image1, sentence, label
+        return image0, image1, sentence, label, 1, ''

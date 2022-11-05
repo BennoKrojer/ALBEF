@@ -26,14 +26,12 @@ class ALBEF(nn.Module):
         
         self.text_encoder = BertModel.from_pretrained(text_encoder, config=bert_config, add_pooling_layer=False)  
         self.pretrained_cls_head = config['pretrained_cls_head']
-        if config['pretrained_cls_head']:
-            self.it_head = nn.Linear(self.text_encoder.config.hidden_size, 3)     
-        else:
-            self.cls_head = nn.Sequential(
+        self.it_head = nn.Linear(self.text_encoder.config.hidden_size, 3) #pretrained head
+        self.cls_head = nn.Sequential(
                   nn.Linear(self.text_encoder.config.hidden_size, self.text_encoder.config.hidden_size),
                   nn.ReLU(),
                   nn.Linear(self.text_encoder.config.hidden_size, 2)
-                )            
+                ) # nvlr2 head
 
         self.share_cross_attention(self.text_encoder.encoder)
 
@@ -43,14 +41,12 @@ class ALBEF(nn.Module):
                 mlp_ratio=4, qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6))                 
             self.text_encoder_m = BertModel.from_pretrained(text_encoder, config=bert_config, add_pooling_layer=False) 
             self.share_cross_attention(self.text_encoder_m.encoder)                
-            if config['pretrained_cls_head']:
-                self.it_head_m = nn.Linear(self.text_encoder.config.hidden_size, 3)     
-            else:
-                self.cls_head_m = nn.Sequential(
-                      nn.Linear(self.text_encoder.config.hidden_size, self.text_encoder.config.hidden_size),
-                      nn.ReLU(),
-                      nn.Linear(self.text_encoder.config.hidden_size, 2)
-                    )                
+            self.it_head_m = nn.Linear(self.text_encoder.config.hidden_size, 3) #pretrained head 
+            self.cls_head_m = nn.Sequential(
+                nn.Linear(self.text_encoder.config.hidden_size, self.text_encoder.config.hidden_size),
+                nn.ReLU(),
+                nn.Linear(self.text_encoder.config.hidden_size, 2)
+            )                # nvlr2 head
 
             self.model_pairs = [[self.visual_encoder,self.visual_encoder_m],
                                 [self.text_encoder,self.text_encoder_m],
@@ -60,7 +56,7 @@ class ALBEF(nn.Module):
             self.momentum = 0.995
             
             
-    def forward(self, image, text, targets, alpha=0, train=True):
+    def forward(self, image, text, targets, alpha=0, train=True, task=''):
         
         image_embeds = self.visual_encoder(image) 
         image_atts = torch.ones(image_embeds.size()[:-1],dtype=torch.long).to(image.device)
@@ -73,9 +69,9 @@ class ALBEF(nn.Module):
                                    encoder_attention_mask = [image_atts[:image0_embeds.size(0)],
                                                              image_atts[image0_embeds.size(0):]],        
                                    return_dict = True,
-                                  )  
+                                  )
         hidden_state = output.last_hidden_state[:,0,:]   
-        if self.pretrained_cls_head:
+        if not task == 'nlvr':
             prediction = self.it_head(hidden_state)[:,:2]
         else:
             prediction = self.cls_head(hidden_state)
@@ -93,7 +89,7 @@ class ALBEF(nn.Module):
                                                                          image_atts[image0_embeds.size(0):]],        
                                                return_dict = True,
                                               )   
-                    if self.pretrained_cls_head: 
+                    if not task == 'nlvr':
                         prediction_m = self.it_head_m(output_m.last_hidden_state[:,0,:])[:,:2]
                     else:
                         prediction_m = self.cls_head_m(output_m.last_hidden_state[:,0,:])   

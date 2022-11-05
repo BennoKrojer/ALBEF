@@ -32,17 +32,15 @@ class NaturalistClassificationDataset(Dataset):
 
         dataset = []
         for i, row in tqdm(enumerate(json_file), total=len(json_file)):
-            img0 = row["img0_id"]
-            img1 = row["img1_id"]
-            img0 = glob.glob(f'{data_dir}/images/{img0}*')[0]
-            img1 = glob.glob(f'{data_dir}/images/{img1}*')[0]
-
+            if self.debug and i > 100:
+                break
+            img0 = row["img1_id"]
+            img1 = row["img2_id"]
+            img0 = f'{data_dir}/images/{img0}'
+            img1 = f'{data_dir}/images/{img1}'
             dataset.append(([img0,img1], row['description'], 0))
             dataset.append(([img1,img0], row['description'], 1))
         
-        if self.debug:
-            dataset = dataset[:120]
-
         return dataset
     
     def __getitem__(self, idx):

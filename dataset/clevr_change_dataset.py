@@ -16,7 +16,7 @@ from PIL import Image
 class ClevrClassificationDataset(Dataset):
 
     def __init__(self, transform, split, debug=False):
-        data_dir = '/home/mila/b/benno.krojer/scratch/spotdiff'
+        data_dir = '/home/mila/b/benno.krojer/scratch/clevr_change'
         super().__init__()
         assert split in ['train', 'val']
         self.transform = transform

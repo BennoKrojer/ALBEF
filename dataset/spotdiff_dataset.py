@@ -37,23 +37,16 @@ class SpotdiffClassificationDataset(Dataset):
                 # get two different images
                 image0_file = os.path.join(data_dir, "resized_images", img_id+".png")
                 image1_file = os.path.join(data_dir, "resized_images", img_id+"_2.png")
-                if random.rand() > 0.5:
-                    target = 1
-                    images = [image0_file,image1_file]
-                else:
-                    target = 0
-                    images = [image1_file,image0_file]
-                
+                dataset.append((image0_file, image1_file, sent, 1))
+                dataset.append((image1_file, image0_file, sent, 0))
                 # img = torch.stack(images, dim=0)
-                dataset.append((images, text, target))
         if self.debug:
             dataset = dataset[:120]
 
         return dataset
     
     def __getitem__(self, idx):
-        img, text, target = self.data[idx]
-        file0, file1 = img
+        file0, file1, text, target = self.data[idx]
         image0 = self.transform(Image.open(file0).convert('RGB'))
         image1 = self.transform(Image.open(file1).convert('RGB'))
 

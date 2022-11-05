@@ -25,7 +25,7 @@ class ImgEditClassificationDataset(Dataset):
         self.data = self.load_data(data_dir, split)
 
     def load_data(self, data_dir, split):
-        split_file = os.path.join(data_dir, "annotations", f'{split}.json')
+        split_file = os.path.join(data_dir, f'{split}.json')
         with open(split_file) as f:
             json_file = json.load(f)
 

@@ -6,9 +6,11 @@ from pytube import YouTube
 import traceback
 from decord import VideoReader
 import cv2
+import sys
 
+split = sys.argv[1]
 
-jsonl = open('/home/mila/b/benno.krojer/scratch/moment-retrieval/highlight_train_release.jsonl', 'r').readlines()
+jsonl = open(f'/home/mila/b/benno.krojer/scratch/moment-retrieval/highlight_{split}_release.jsonl', 'r').readlines()
 for line in tqdm(jsonl):
     d = json.loads(line)
     video_str = d['vid']
@@ -24,7 +26,7 @@ for line in tqdm(jsonl):
         fps = vr.get_avg_fps()
         # round frame rate to nearest integer
         fps = int(round(fps))
-        if fps == 30:
+        if fps == 30 and split == "train":
             print('fps is 30', video_str)
             continue
         start = start * fps
