@@ -1,5 +1,6 @@
 # taken from https://github.com/AaronGrainer/pytorch-nlp-multitask/blob/master/trainer/task.py
 import numpy as np
+import PIL
 
 
 class StrIgnoreDevice(str):
@@ -46,7 +47,7 @@ class MultitaskDataloader:
             task_name: len(dataloader)
             for task_name, dataloader in self.dataloader_dict.items()
         }
-        self.max_num_batches = max(self.num_batches_dict.values())
+        self.avg_num_batches = np.mean(list(self.num_batches_dict.values()))
         self.task_name_list = list(self.dataloader_dict)
         self.dataset = [None] * sum(
             len(dataloader.dataset) for dataloader in self.dataloader_dict.values()
@@ -54,21 +55,26 @@ class MultitaskDataloader:
 
         self.iters = {task_name: iter(dataloader) for task_name, dataloader in self.dataloader_dict.items()}
         
-        factor = 1 / self.num_batches_dict['imagecode']
-        self.len = int(self.num_batches_dict['imagecode'] * factor)
+        if 'imagecode' not in self.task_name_list:
+            self.len = int(self.avg_num_batches * len(self.dataloader_dict))
+        else:
+            factor = 1 / self.sample_ratios[0]
+            self.len = int(self.num_batches_dict['imagecode'] * factor)
 
     def __len__(self):
         return self.len
 
     def __iter__(self):
-        """
-        Sample randomly a task with equal probability. When the dataloader reaches its end, reset it."""
-
         for _ in range(len(self)):
             task_name = np.random.choice(self.task_name_list, p=self.sample_ratios)
-            try:
-                yield next(self.iters[task_name])
-            except StopIteration:
-                print(f"Resetting {task_name} dataloader")
-                self.iters[task_name] = iter(self.dataloader_dict[task_name])
-                yield next(self.iters[task_name])
+            while True:
+                try:
+                    yield next(self.iters[task_name])
+                    break
+                except StopIteration:
+                    print(f"Resetting {task_name} dataloader")
+                    self.iters[task_name] = iter(self.dataloader_dict[task_name])
+                    yield next(self.iters[task_name])
+                    break
+                except PIL.UnidentifiedImageError:
+                    print(f"Skipping image")

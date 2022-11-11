@@ -25,11 +25,11 @@ class SVOClassificationDataset(Dataset):
         self.data = self.load_data(data_dir, split)
 
     def load_data(self, data_dir, split):
+        dataset = []
         split_file = os.path.join(data_dir, f'{split}.json')
         with open(split_file) as f:
             json_file = json.load(f)
 
-        dataset = []
         for i, row in tqdm(enumerate(json_file), total=len(json_file)):
             pos_id = str(row['pos_id'])
             neg_id = str(row['neg_id'])
@@ -37,6 +37,7 @@ class SVOClassificationDataset(Dataset):
             # get two different images
             pos_file = os.path.join(data_dir, "images", pos_id)
             neg_file = os.path.join(data_dir, "images", neg_id)
+
             dataset.append((pos_file, neg_file, sentence, 0))
             dataset.append((neg_file, pos_file, sentence, 1))
 

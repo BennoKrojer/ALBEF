@@ -95,7 +95,7 @@ def train_hard_neg(model, data_loader, optimizer, tokenizer, epoch, warmup_steps
         images = torch.cat([img0, img1], dim=0)
         images, targets = images.to(device), targets.to(device)   
 
-        text_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device)  
+        text_inputs = tokenizer(texts, padding='longest', return_tensors="pt").to(device)  
 
         if epoch>0 or not config['warm_up']:
             alpha = config['alpha']
@@ -234,8 +234,10 @@ def main(args, config):
         # reshape positional embedding to accomodate for image resolution change
         pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder.pos_embed'],model.visual_encoder)         
         state_dict['visual_encoder.pos_embed'] = pos_embed_reshaped
-        
-            
+        if 'visual_encoder_m.pos_embed' in state_dict:
+            m_pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder_m.pos_embed'],model.visual_encoder_m)   
+            state_dict['visual_encoder_m.pos_embed'] = m_pos_embed_reshaped     
+
         msg = model.load_state_dict(state_dict,strict=False)
 
         if config['distill']:
@@ -273,7 +275,9 @@ def main(args, config):
         #     acc, vid_acc = evaluate_fullset(model, fullset_val_loader, tokenizer, device, config)
         val_stats = evaluate(model, val_loader, tokenizer, device, config)
 
-        wandb.log({'Val_acc': float(val_stats['acc']), 'Val_video_acc': float(val_stats['video_acc'])})
+        wandb.log({'Val_acc': float(val_stats['acc'])})
+        if 'vid_acc' in val_stats:
+            wandb.log({'Val_vid_acc': float(val_stats['vid_acc'])})
 
         if utils.is_main_process():
             log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
@@ -321,11 +325,13 @@ if __name__ == '__main__':
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
     parser.add_argument('--distributed', default=False, type=bool)
     parser.add_argument('--grad_accumulation', default=128, type=int)
+    parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--lr', type=float, default=0.00003)
     parser.add_argument('--min_lr', type=float, default=0.000003)
     parser.add_argument('--warmup_lr', type=float, default=0.000002)
     parser.add_argument('--max_epoch', type=int, default=20)
     parser.add_argument('--video_only', type=str, default='False')
+    parser.add_argument('--static_only', type=str, default='False')
     parser.add_argument('--random_pair_sampling', type=str, default='False')
     parser.add_argument('--aug_prob', type=float, default=0.3)
     parser.add_argument('--distill', type=str, default='True')
@@ -340,6 +346,7 @@ if __name__ == '__main__':
         wandb.init(project='Multi-Image-Transfer-ALBEF', settings=wandb.Settings(start_method='fork'))
 
     args.video_only = args.video_only == 'True'
+    args.static_only = args.static_only == 'True'
     args.random_pair_sampling = args.random_pair_sampling == 'True'
     args.pretrained_cls_head = args.pretrained_cls_head == 'True'
     args.distill = args.distill == 'True'
@@ -347,12 +354,14 @@ if __name__ == '__main__':
     wandb.config.update(args)
     config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
     config['grad_accumulation'] = args.grad_accumulation
+    config['batch_size'] = args.batch_size
     config['optimizer']['lr'] = args.lr
     config['schedular']['lr'] = args.lr
     config['schedular']['min_lr'] = args.min_lr
     config['schedular']['warmup_lr'] = args.warmup_lr
     config['max_epoch'] = args.max_epoch
     config['video_only'] = args.video_only
+    config['static_only'] = args.static_only
     config['random_pair_sampling'] = args.random_pair_sampling
     config['aug_prob'] = args.aug_prob
     config['distill'] = args.distill

@@ -6,6 +6,7 @@ import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 from dataset.utils import pre_caption
+from tqdm import tqdm
 
 # from transformers import BertTokenizerFast
 from PIL import Image
@@ -25,7 +26,7 @@ class PairedImageCoDeDataset(Dataset):
             json_file = json.load(f)
 
         dataset = []
-        for img_dir, data in json_file.items():
+        for img_dir, data in tqdm(json_file.items(), total=len(json_file)):
             img_files = list((Path(f'{img_path}/{img_dir}')).glob('*.jpg'))
             img_files = sorted(img_files, key=lambda x: int(str(x).split('/')[-1].split('.')[0][3:]))
             for img_idx, text in data.items():
@@ -82,7 +83,7 @@ class ImageCoDeDataset(Dataset):
             json_file = json.load(f)
 
         dataset = []
-        for img_dir, data in json_file.items():
+        for img_dir, data in tqdm(json_file.items(), total=len(json_file)):
             img_files = list((Path(f'{img_path}/{img_dir}')).glob('*.jpg'))
             img_files = sorted(img_files, key=lambda x: int(str(x).split('/')[-1].split('.')[0][3:]))
             for img_idx, text in data.items():
@@ -149,7 +150,7 @@ class InferenceImageCoDeDataset(Dataset):
             json_file = json.load(f)
 
         dataset = []
-        for img_dir, data in json_file.items():
+        for img_dir, data in tqdm(json_file.items(), total=len(json_file)):
             img_files = list((Path(f'{img_path}/{img_dir}')).glob('*.jpg'))
             img_files = sorted(img_files, key=lambda x: int(str(x).split('/')[-1].split('.')[0][3:]))
             for img_idx, text in data.items():

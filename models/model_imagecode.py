@@ -10,7 +10,8 @@ class ALBEF(nn.Module):
     def __init__(self,                 
                  text_encoder = None,
                  tokenizer = None,
-                 config = None,     
+                 config = None,
+                 tasks = None     
                  ):
         super().__init__()
         
@@ -25,13 +26,28 @@ class ALBEF(nn.Module):
         bert_config.num_hidden_layers = 18
         
         self.text_encoder = BertModel.from_pretrained(text_encoder, config=bert_config, add_pooling_layer=False)  
-        self.pretrained_cls_head = config['pretrained_cls_head']
+        
+        random_head = ['spotdiff', 'clevr', 'img-edit', 'naturalist']
+        pretrained_head = ['imagecode', 'moment', 'svo']
+        big_head = ['nlvr']
+
         self.it_head = nn.Linear(self.text_encoder.config.hidden_size, 3) #pretrained head
-        self.cls_head = nn.Sequential(
-                  nn.Linear(self.text_encoder.config.hidden_size, self.text_encoder.config.hidden_size),
-                  nn.ReLU(),
-                  nn.Linear(self.text_encoder.config.hidden_size, 2)
-                ) # nvlr2 head
+
+        self.heads = nn.ModuleDict()
+        for task in tasks:
+            if task in random_head:
+                self.heads[task] = nn.Linear(self.text_encoder.config.hidden_size, 2)
+            elif task in pretrained_head:
+                # copy parameters from it_head
+                self.heads[task] = nn.Linear(self.text_encoder.config.hidden_size, 3)
+                self.heads[task].weight.data = self.it_head.weight.data.clone()
+                self.heads[task].bias.data = self.it_head.bias.data.clone()
+            elif task in big_head:
+                self.heads[task] = nn.Sequential(
+                                    nn.Linear(self.text_encoder.config.hidden_size, self.text_encoder.config.hidden_size),
+                                    nn.ReLU(),
+                                    nn.Linear(self.text_encoder.config.hidden_size, 2)
+                                    )
 
         self.share_cross_attention(self.text_encoder.encoder)
 
@@ -40,18 +56,29 @@ class ALBEF(nn.Module):
                 img_size=config['image_res'], patch_size=16, embed_dim=768, depth=12, num_heads=12, 
                 mlp_ratio=4, qkv_bias=True, norm_layer=partial(nn.LayerNorm, eps=1e-6))                 
             self.text_encoder_m = BertModel.from_pretrained(text_encoder, config=bert_config, add_pooling_layer=False) 
-            self.share_cross_attention(self.text_encoder_m.encoder)                
-            self.it_head_m = nn.Linear(self.text_encoder.config.hidden_size, 3) #pretrained head 
-            self.cls_head_m = nn.Sequential(
-                nn.Linear(self.text_encoder.config.hidden_size, self.text_encoder.config.hidden_size),
-                nn.ReLU(),
-                nn.Linear(self.text_encoder.config.hidden_size, 2)
-            )                # nvlr2 head
+            self.share_cross_attention(self.text_encoder_m.encoder)
+            self.it_head_m = nn.Linear(self.text_encoder_m.config.hidden_size, 3) #pretrained head
+            self.heads_m = nn.ModuleDict()
+            for task in tasks:
+                if task in random_head:
+                    self.heads_m[task] = nn.Linear(self.text_encoder_m.config.hidden_size, 2)
+                elif task in pretrained_head:
+                    # copy parameters from it_head
+                    self.heads_m[task] = nn.Linear(self.text_encoder_m.config.hidden_size, 3)
+                    self.heads_m[task].weight.data = self.it_head_m.weight.data.clone()
+                    self.heads_m[task].bias.data = self.it_head_m.bias.data.clone()
+                elif task in big_head:
+                    self.heads_m[task] = nn.Sequential(
+                                        nn.Linear(self.text_encoder_m.config.hidden_size, self.text_encoder_m.config.hidden_size),
+                                        nn.ReLU(),
+                                        nn.Linear(self.text_encoder_m.config.hidden_size, 2)
+                                        )
 
             self.model_pairs = [[self.visual_encoder,self.visual_encoder_m],
-                                [self.text_encoder,self.text_encoder_m],
-                                [self.it_head,self.it_head_m] if self.pretrained_cls_head else [self.cls_head,self.cls_head_m],
+                                [self.text_encoder,self.text_encoder_m]
                                ]
+            for task in tasks:
+                self.model_pairs.append([self.heads[task],self.heads_m[task]])
             self.copy_params()        
             self.momentum = 0.995
             
@@ -70,11 +97,8 @@ class ALBEF(nn.Module):
                                                              image_atts[image0_embeds.size(0):]],        
                                    return_dict = True,
                                   )
-        hidden_state = output.last_hidden_state[:,0,:]   
-        if not task == 'nlvr':
-            prediction = self.it_head(hidden_state)[:,:2]
-        else:
-            prediction = self.cls_head(hidden_state)
+        hidden_state = output.last_hidden_state[:,0,:]
+        prediction = self.heads[task](hidden_state)[:,:2]
 
         if train:
             if self.distill:                
@@ -88,11 +112,8 @@ class ALBEF(nn.Module):
                                                encoder_attention_mask = [image_atts[:image0_embeds.size(0)],
                                                                          image_atts[image0_embeds.size(0):]],        
                                                return_dict = True,
-                                              )   
-                    if not task == 'nlvr':
-                        prediction_m = self.it_head_m(output_m.last_hidden_state[:,0,:])[:,:2]
-                    else:
-                        prediction_m = self.cls_head_m(output_m.last_hidden_state[:,0,:])   
+                                              )
+                    prediction_m = self.heads_m[task](output_m.last_hidden_state[:,0,:])[:,:2]
 
                 loss = (1-alpha)*F.cross_entropy(prediction, targets) - alpha*torch.sum(
                     F.log_softmax(prediction, dim=1)*F.softmax(prediction_m, dim=1),dim=1).mean()                        

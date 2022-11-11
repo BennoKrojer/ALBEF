@@ -44,6 +44,8 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     warmup_iterations = warmup_steps*step_size  
 
     for i,(task_name, image0, image1, text, targets, is_video, img_dir) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        if task_name in ['moment', 'clevr'] and i > 15000:
+            break
         images = torch.cat([image0, image1], dim=0)
         images, targets = images.to(device), targets.to(device)   
         
@@ -87,6 +89,8 @@ def train_hard_neg(model, data_loader, optimizer, tokenizer, epoch, warmup_steps
     warmup_iterations = warmup_steps*step_size  
 
     for i,(task_name, img0, img1, text, targets, is_video, img_dir) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        if task_name in ['moment', 'clevr'] and i > 15000:
+            break
         if task_name == 'imagecode':
             img0 = img0.flatten(0,1)
             img1 = img1.flatten(0,1)
@@ -94,11 +98,13 @@ def train_hard_neg(model, data_loader, optimizer, tokenizer, epoch, warmup_steps
             for t in text:
                 texts += [t]*9
             targets = targets.flatten()
+        else:
+            texts = text
             
         images = torch.cat([img0, img1], dim=0)
         images, targets = images.to(device), targets.to(device)   
 
-        text_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device)  
+        text_inputs = tokenizer(texts, padding='longest', return_tensors="pt").to(device)  
 
         if epoch>0 or not config['warm_up']:
             alpha = config['alpha']
@@ -117,7 +123,7 @@ def train_hard_neg(model, data_loader, optimizer, tokenizer, epoch, warmup_steps
 
         if epoch==0 and i%step_size==0 and i<=warmup_iterations: 
             scheduler.step(i//step_size)
-            wandb.log({'loss': loss.item()})
+            # wandb.log({'loss': loss.item()})
 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -126,7 +132,7 @@ def train_hard_neg(model, data_loader, optimizer, tokenizer, epoch, warmup_steps
 
 
 @torch.no_grad()
-def evaluate(model, data_loader, tokenizer, device, config):
+def evaluate(model, data_loader, tokenizer, device, config, taskname):
     # test
     model.eval()
             
@@ -134,21 +140,23 @@ def evaluate(model, data_loader, tokenizer, device, config):
 
     header = 'Evaluation:'
     print_freq = 50
-    for image0, image1, text, targets, is_video, img_dir in metric_logger.log_every(data_loader, print_freq, header):
+    for i, (image0, image1, text, targets, is_video, img_dir) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+        if taskname in ['moment', 'clevr'] and i % 10 != 0:
+            continue
         images = torch.cat([image0, image1], dim=0)
         images, targets = images.to(device), targets.to(device)   
         
         text_inputs = tokenizer(text, padding='longest', return_tensors="pt").to(device)  
 
-        prediction = model(images, text_inputs, targets=targets, train=False, task='imagecode') 
+        prediction = model(images, text_inputs, targets=targets, train=False, task=taskname)
  
         _, pred_class = prediction.max(1)
         accuracy = (targets==pred_class).sum() / targets.size(0)
         video_accuracy = ((pred_class.cuda() == targets.cuda()) * is_video.cuda()).sum() / is_video.sum()
         
-        metric_logger.meters['acc'].update(accuracy.item(), n=image0.size(0))
+        metric_logger.meters[f'{taskname}_acc'].update(accuracy.item(), n=image0.size(0))
         if not torch.isnan(video_accuracy):
-            metric_logger.meters['video_acc'].update(video_accuracy.item(), n=image0.size(0))
+            metric_logger.meters[f'{taskname}_video_acc'].update(video_accuracy.item(), n=image0.size(0))
                 
     # gather the stats from all processes
     metric_logger.synchronize_between_processes()
@@ -206,6 +214,17 @@ def evaluate_fullset(model, data_loader, tokenizer, device, config):
 
     
 def main(args, config):    
+    if args.distributed:
+        utils.init_distributed_mode(args)    
+    
+    # print number of GPUs
+    num_gpus = torch.cuda.device_count()
+    print("Number of GPUs:", num_gpus)
+
+    # reduce grad_accumulation
+    if num_gpus>1:
+        config['grad_accumulation'] = config['grad_accumulation']//num_gpus
+
     device = torch.device(args.device)
 
     # fix the seed for reproducibility
@@ -220,6 +239,7 @@ def main(args, config):
 
     dataloaders_train = {}
     dataloaders_val = {}
+    print('Tasks: ' + str(args.tasks))
     for task in args.tasks:
         if task == 'imagecode' and not config['random_pair_sampling']:
             batch_size = config['batch_size'] // 8
@@ -227,6 +247,14 @@ def main(args, config):
             batch_size = config['batch_size']
         print('Loading dataset for task', task)
         datasets = create_dataset(task, config)
+
+        if args.distributed:
+            num_tasks = utils.get_world_size()
+            global_rank = utils.get_rank()            
+            samplers = create_sampler(datasets, [True, False], num_tasks, global_rank)         
+        else:
+            samplers = [None, None]
+
         train_loader, val_loader = create_loader(datasets, [None, None], batch_size=[batch_size]*2,
                                                     num_workers=[4,4],is_trains=[True,False], collate_fns=[None,None])
         dataloaders_train[task] = DataLoaderWithTaskname(task, train_loader)
@@ -238,7 +266,7 @@ def main(args, config):
 
     #### Model #### 
     print("Creating model")
-    model = ALBEF(config=config, text_encoder=args.text_encoder, tokenizer=tokenizer)
+    model = ALBEF(config=config, text_encoder=args.text_encoder, tokenizer=tokenizer, tasks=args.tasks)
     
     if args.checkpoint:    
         checkpoint = torch.load(args.checkpoint, map_location='cpu') 
@@ -260,6 +288,10 @@ def main(args, config):
     model = model.to(device)   
     
     model_without_ddp = model
+    if args.distributed:
+        model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.gpu], find_unused_parameters=True)
+        model_without_ddp = model.module    
+    
     arg_opt = utils.AttrDict(config['optimizer'])
     optimizer = create_optimizer(arg_opt, model)
     arg_sche = utils.AttrDict(config['schedular'])
@@ -270,7 +302,8 @@ def main(args, config):
     
     print("Start training")
     start_time = time.time()
-    best = 0
+    best0 = 0
+    best1 = 0
     best_epoch = 0
 
     for epoch in range(0, max_epoch):
@@ -282,33 +315,71 @@ def main(args, config):
         else:
             train_stats = {}
 
-        val_stats = evaluate(model, dataloaders_val['imagecode'], tokenizer, device, config)
+        if len(args.tasks) == 2:
+            val_stats = evaluate(model, dataloaders_val[args.tasks[0]], tokenizer, device, config, args.tasks[0])
+            val_stats.update(evaluate(model, dataloaders_val[args.tasks[1]], tokenizer, device, config, args.tasks[1]))
+            wandb.log({f'{args.tasks[0]}_Val_acc': float(val_stats[f'{args.tasks[0]}_acc'])})
+            wandb.log({f'{args.tasks[1]}_Val_acc': float(val_stats[f'{args.tasks[1]}_acc'])})
+            if f'{args.tasks[0]}_vid_acc' in val_stats:
+                wandb.log({f'{args.tasks[0]}_Val_vid_acc': float(val_stats[f'{args.tasks[0]}_vid_acc'])})
+            if f'{args.tasks[1]}_vid_acc' in val_stats:
+                wandb.log({f'{args.tasks[1]}_Val_vid_acc': float(val_stats[f'{args.tasks[1]}_vid_acc'])})
+            
+            if float(val_stats[f'{args.tasks[0]}_acc']) > best0:
+                best0 = float(val_stats[f'{args.tasks[0]}_acc'])
+                best_epoch = epoch
+                wandb.log({f'{args.tasks[0]}_Best_Val_acc': best0})
+            
+            if float(val_stats[f'{args.tasks[1]}_acc']) > best1:
+                best1 = float(val_stats[f'{args.tasks[1]}_acc'])
+                wandb.log({f'{args.tasks[1]}_Best_Val_acc': best1})
 
-        wandb.log({'Val_acc': float(val_stats['acc']), 'Val_video_acc': float(val_stats['video_acc'])})
-
+        else:
+            val_stats = evaluate(model, dataloaders_val[args.tasks[0]], tokenizer, device, config, args.tasks[0])
+            wandb.log({f'{args.tasks[0]}_Val_acc': float(val_stats[f'{args.tasks[0]}_acc'])})
+            if f'{args.tasks[0]}_vid_acc' in val_stats:
+                wandb.log({f'{args.tasks[0]}_Val_vid_acc': float(val_stats[f'{args.tasks[0]}_vid_acc'])})
+            
+            if float(val_stats[f'{args.tasks[0]}_acc']) > best0:
+                best0 = float(val_stats[f'{args.tasks[0]}_acc'])
+                best_epoch = epoch
+                wandb.log({f'{args.tasks[0]}_Best_Val_acc': best0})
+        
         if utils.is_main_process():
             log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                          **{f'val_{k}': v for k, v in val_stats.items()},
                          'epoch': epoch,
                         }
                        
-            if float(val_stats['acc'])>best:
-                # save_obj = {
-                #     'model': model_without_ddp.state_dict(),
-                #     'optimizer': optimizer.state_dict(),
-                #     'lr_scheduler': lr_scheduler.state_dict(),
-                #     'config': config,
-                #     'epoch': epoch,
-                # }
-                # torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_%02d.pth'%epoch)) 
-                best = float(val_stats['acc'])
-                wandb.log({'Best Val Acc': best})
-                best_epoch = epoch
+            # if float(val_stats['acc'])>best:
+            #     save_obj = {
+            #         'model': model_without_ddp.state_dict(),
+            #         'optimizer': optimizer.state_dict(),
+            #         'lr_scheduler': lr_scheduler.state_dict(),
+            #         'config': config,
+            #         'epoch': epoch,
+            #     }
+            #     torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_%02d.pth'%epoch))
+            #     best = float(val_stats['acc'])
+            #     wandb.log({'Best Val Acc': best})
+            #     best_epoch = epoch
+            
+            # log latest checkpoint
+            save_obj = {
+                'model': model_without_ddp.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'lr_scheduler': lr_scheduler.state_dict(),
+                'config': config,
+                'epoch': epoch,
+            }
+            torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_latest.pth'))
             
             with open(os.path.join(args.output_dir, "log.txt"),"a") as f:
                 f.write(json.dumps(log_stats) + "\n")
         
-        lr_scheduler.step(epoch+warmup_steps+1)  
+        lr_scheduler.step(epoch+warmup_steps+1)
+        if args.distributed:
+            dist.barrier()
                 
     total_time = time.time() - start_time
     total_time_str = str(datetime.timedelta(seconds=int(total_time)))
@@ -322,7 +393,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', default='./configs/imagecode.yaml')
     parser.add_argument('--checkpoint', default='pretrain_model_nlvr.pth', type=str)
-    parser.add_argument('--output_dir', default='output/imagecode')
+    parser.add_argument('--output_dir', default='/home/mila/b/benno.krojer/scratch/transfer-study-output', type=str)
     parser.add_argument('--evaluate', action='store_true')     
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--device', default='cuda')
@@ -330,20 +401,22 @@ if __name__ == '__main__':
     parser.add_argument('--seed', default=42, type=int)
     parser.add_argument('--world_size', default=1, type=int, help='number of distributed processes')    
     parser.add_argument('--dist_url', default='env://', help='url used to set up distributed training')
-    parser.add_argument('--distributed', default=False, type=bool)
+    parser.add_argument('--distributed', action='store_true')
     parser.add_argument('--grad_accumulation', default=128, type=int)
     parser.add_argument('--lr', type=float, default=0.00003)
     parser.add_argument('--min_lr', type=float, default=0.000003)
     parser.add_argument('--warmup_lr', type=float, default=0.000002)
     parser.add_argument('--max_epoch', type=int, default=20)
     parser.add_argument('--video_only', type=str, default='False')
+    parser.add_argument('--static_only', type=str, default='False')
     parser.add_argument('--random_pair_sampling', type=str, default='False')
     parser.add_argument('--aug_prob', type=float, default=0.3)
     parser.add_argument('--distill', type=str, default='True')
-    parser.add_argument('--pretrained_cls_head', type=str, default='True')
     parser.add_argument('--inference_eval', action='store_true')
+    parser.add_argument('--share_heads', type=str, default='False')
     parser.add_argument('--tasks', type=str, default='imagecode,spotdiff,clevr,img-edit,moment,naturalist,nlvr,svo')
     parser.add_argument('--sample_ratios', type=str, default='')
+    parser.add_argument('--multitask', type=str, default='')
     parser.add_argument('--job_id', type=str)
     args = parser.parse_args()
 
@@ -354,14 +427,16 @@ if __name__ == '__main__':
         args.sample_ratios = [float(x) for x in args.sample_ratios.split(',')]
 
     if args.debug:
-        wandb.init(project='Debug-can-be-deleted', settings=wandb.Settings(start_method='fork'))
+        wandb.init(project='Debug-can-be-deleted', settings=wandb.Settings(start_method='fork'), group=args.job_id)
     else:
-        wandb.init(project='Multi-Image-Transfer-ALBEF', settings=wandb.Settings(start_method='fork'))
+        wandb.init(project='Multi-Image-Transfer-ALBEF', settings=wandb.Settings(start_method='fork'), group=args.job_id)
 
     args.video_only = args.video_only == 'True'
     args.random_pair_sampling = args.random_pair_sampling == 'True'
-    args.pretrained_cls_head = args.pretrained_cls_head == 'True'
     args.distill = args.distill == 'True'
+    args.share_heads = args.share_heads == 'True'
+    args.multitask = args.multitask == 'True'
+    args.static_only = args.static_only == 'True'
 
     wandb.config.update(args)
     config = yaml.load(open(args.config, 'r'), Loader=yaml.Loader)
@@ -376,11 +451,16 @@ if __name__ == '__main__':
     config['aug_prob'] = args.aug_prob
     config['distill'] = args.distill
     config['pretrained'] = args.checkpoint
-    config['pretrained_cls_head'] = args.pretrained_cls_head
     config['debug'] = args.debug
     config['tasks'] = args.tasks
     config['sample_ratios'] = args.sample_ratios
-    
+    config['task_heads'] = args.share_heads
+    config['multitask'] = args.multitask
+    config['static_only'] = args.static_only
+
+    transfer_type = 'multi' if args.multitask else 'seq'
+
+    args.output_dir = os.path.join(args.output_dir,f'{transfer_type}_{"-".join(args.tasks)}_{"-".join([str(x) for x in args.sample_ratios])}_share_heads-{args.share_heads}')
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         
     yaml.dump(config, open(os.path.join(args.output_dir, 'config.yaml'), 'w'))    

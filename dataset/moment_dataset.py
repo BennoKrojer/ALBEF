@@ -33,6 +33,9 @@ class MomentClassificationDataset(Dataset):
         for i, row in tqdm(enumerate(json_file), total=len(json_file)):
             if self.debug and i > 130:
                 break
+            # stop after 1/10 of the data
+            if i > len(json_file) // 10:
+                break
             pos_id = str(row['pos_frame'])
             neg_id = str(row['neg_frame'])
             sentence = row['query']

@@ -69,7 +69,7 @@ def main(args, config):
     utils.init_distributed_mode(args)    
     
     device = torch.device(args.device)
-
+    
     # fix the seed for reproducibility
     seed = args.seed + utils.get_rank()
     torch.manual_seed(seed)
@@ -150,7 +150,7 @@ def main(args, config):
     for epoch in range(start_epoch, max_epoch):
         
         if epoch>0:
-            lr_scheduler.step(epoch+warmup_steps)  
+            lr_scheduler.step(epoch+warmup_steps)
             
         train_stats = train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config) 
         

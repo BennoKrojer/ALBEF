@@ -47,10 +47,10 @@ def create_dataset(dataset, config, fullset=False):
                
     elif dataset=='imagecode':
         if config['random_pair_sampling']:
-            train_dataset = PairedImageCoDeDataset(train_transform, '../imagecode/data', 'train', video_only=config['video_only'], debug=config['debug'])
+            train_dataset = PairedImageCoDeDataset(train_transform, '../imagecode/data', 'train', video_only=config['video_only'], debug=config['debug'], static_only=config['static_only'])
         else:
-            train_dataset = ImageCoDeDataset(train_transform, '../imagecode/data', 'train', video_only=config['video_only'], debug=config['debug'])
-        val_dataset = PairedImageCoDeDataset(test_transform, '../imagecode/data','valid', video_only=config['video_only'], debug=config['debug'])
+            train_dataset = ImageCoDeDataset(train_transform, '../imagecode/data', 'train', video_only=config['video_only'], debug=config['debug'], static_only=config['static_only'])
+        val_dataset = PairedImageCoDeDataset(test_transform, '../imagecode/data','valid', video_only=config['video_only'], debug=config['debug'], static_only=config['static_only'])
         # inference_val_dataset = InferenceImageCoDeDataset(test_transform, '../imagecode/data','valid', video_only=config['video_only'], debug=config['debug'])
         return train_dataset, val_dataset#, inference_val_dataset
     

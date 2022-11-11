@@ -45,7 +45,6 @@ np.random.shuffle(d)
 #split data
 train = d[:int(len(d)*0.8)]
 test = d[int(len(d)*0.8):]
-val = test[:int(len(test)*0.5)]
 
 # write data
 with open('/home/mila/b/benno.krojer/scratch/svo/train.json', 'w') as f:
