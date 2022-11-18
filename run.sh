@@ -11,6 +11,7 @@ echo	"Nodelist:	$SLURM_JOB_NODELIST"
 
 # activate conda env
 module purge >/dev/null 2>&1
+module load libffi
 source ../BLIP/env/bin/activate
 # Export env variables
 export PYTHONBUFFERED=1

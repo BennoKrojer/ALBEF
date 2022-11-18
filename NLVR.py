@@ -42,7 +42,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     step_size = 100
     warmup_iterations = warmup_steps*step_size  
  
-    for i,(image0, image1, text, targets) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
+    for i,(image0, image1, text, targets, _, _) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
         images = torch.cat([image0, image1], dim=0)
         images, targets = images.to(device), targets.to(device)   
         
@@ -82,7 +82,7 @@ def evaluate(model, data_loader, tokenizer, device, config):
     header = 'Evaluation:'
     print_freq = 50
 
-    for image0, image1, text, targets in metric_logger.log_every(data_loader, print_freq, header):
+    for image0, image1, text, targets, _, _ in metric_logger.log_every(data_loader, print_freq, header):
         images = torch.cat([image0, image1], dim=0)
         images, targets = images.to(device), targets.to(device)   
         
@@ -117,7 +117,7 @@ def main(args, config):
     
     samplers = [None, None, None]
 
-    train_loader, val_loader, test_loader = create_loader(datasets,samplers,batch_size=[config['batch_size']]*3,
+    train_loader, val_loader = create_loader(datasets,samplers,batch_size=[config['batch_size']]*3,
                                               num_workers=[4,4,4],is_trains=[True,False,False], collate_fns=[None,None,None])
 
     tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
@@ -163,24 +163,24 @@ def main(args, config):
         
         train_stats = train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, config)   
         val_stats = evaluate(model, val_loader, tokenizer, device, config)
-        test_stats = evaluate(model, test_loader, tokenizer, device, config)
+        # test_stats = evaluate(model, test_loader, tokenizer, device, config)
 
         if utils.is_main_process():  
             log_stats = {**{f'train_{k}': v for k, v in train_stats.items()},
                          **{f'val_{k}': v for k, v in val_stats.items()},
-                         **{f'test_{k}': v for k, v in test_stats.items()},
+                        #  **{f'test_{k}': v for k, v in test_stats.items()},
                          'epoch': epoch,
                         }
                        
             if float(val_stats['acc'])>best:
-                # save_obj = {
-                #     'model': model_without_ddp.state_dict(),
-                #     'optimizer': optimizer.state_dict(),
-                #     'lr_scheduler': lr_scheduler.state_dict(),
-                #     'config': config,
-                #     'epoch': epoch,
-                # }
-                # torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_%02d.pth'%epoch)) 
+                save_obj = {
+                    'model': model_without_ddp.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'lr_scheduler': lr_scheduler.state_dict(),
+                    'config': config,
+                    'epoch': epoch,
+                }
+                torch.save(save_obj, os.path.join(args.output_dir, 'checkpoint_best.pth')) 
                 best = float(val_stats['acc'])
                 best_epoch = epoch
             

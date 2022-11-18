@@ -7,7 +7,7 @@ from .step_lr import StepLRScheduler
 from .plateau_lr import PlateauLRScheduler
 
 
-def create_scheduler(args, optimizer):
+def create_scheduler(args, optimizer, state_dict=None):
     num_epochs = args.epochs
 
     if getattr(args, 'lr_noise', None) is not None:
@@ -83,5 +83,8 @@ def create_scheduler(args, optimizer):
             noise_std=getattr(args, 'lr_noise_std', 1.),
             noise_seed=getattr(args, 'seed', 42),
         )
+    
+    if state_dict is not None:
+        lr_scheduler.load_state_dict(state_dict)
 
     return lr_scheduler, num_epochs

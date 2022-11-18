@@ -44,7 +44,7 @@ def train(model, data_loader, optimizer, tokenizer, epoch, warmup_steps, device,
     warmup_iterations = warmup_steps*step_size  
 
     for i,(task_name, image0, image1, text, targets, is_video, img_dir) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-        if task_name in ['moment', 'clevr'] and i > 15000:
+        if len(config['tasks']) == 1 and task_name in ['moment', 'clevr'] and i > 15000:
             break
         images = torch.cat([image0, image1], dim=0)
         images, targets = images.to(device), targets.to(device)   
@@ -89,7 +89,7 @@ def train_hard_neg(model, data_loader, optimizer, tokenizer, epoch, warmup_steps
     warmup_iterations = warmup_steps*step_size  
 
     for i,(task_name, img0, img1, text, targets, is_video, img_dir) in enumerate(metric_logger.log_every(data_loader, print_freq, header)):
-        if task_name in ['moment', 'clevr'] and i > 15000:
+        if len(config['tasks']) == 1 and task_name in ['moment', 'clevr'] and i > 15000:
             break
         if task_name == 'imagecode':
             img0 = img0.flatten(0,1)
@@ -271,6 +271,13 @@ def main(args, config):
     if args.checkpoint:    
         checkpoint = torch.load(args.checkpoint, map_location='cpu') 
         state_dict = checkpoint['model']
+        if args.load_optimizer:
+            optim_state_dict = checkpoint['optimizer']
+            scheduler_state_dict = checkpoint['lr_scheduler']
+            print('Loading optimizer and scheduler')
+        else:
+            optim_state_dict = None
+            scheduler_state_dict = None
         
         # reshape positional embedding to accomodate for image resolution change
         pos_embed_reshaped = interpolate_pos_embed(state_dict['visual_encoder.pos_embed'],model.visual_encoder)         
@@ -281,9 +288,14 @@ def main(args, config):
 
         if config['distill']:
             model.copy_params()
-            
+
+
         print('load checkpoint from %s'%args.checkpoint)
         print(msg)
+    else:
+        optim_state_dict = None
+        scheduler_state_dict = None
+
 
     model = model.to(device)   
     
@@ -293,9 +305,9 @@ def main(args, config):
         model_without_ddp = model.module    
     
     arg_opt = utils.AttrDict(config['optimizer'])
-    optimizer = create_optimizer(arg_opt, model)
+    optimizer = create_optimizer(arg_opt, model, state_dict=optim_state_dict)
     arg_sche = utils.AttrDict(config['schedular'])
-    lr_scheduler, _ = create_scheduler(arg_sche, optimizer)  
+    lr_scheduler, _ = create_scheduler(arg_sche, optimizer, state_dict=scheduler_state_dict)
     
     max_epoch = config['schedular']['epochs']
     warmup_steps = config['schedular']['warmup_epochs']
@@ -413,10 +425,15 @@ if __name__ == '__main__':
     parser.add_argument('--aug_prob', type=float, default=0.3)
     parser.add_argument('--distill', type=str, default='True')
     parser.add_argument('--inference_eval', action='store_true')
+
     parser.add_argument('--share_heads', type=str, default='False')
-    parser.add_argument('--tasks', type=str, default='imagecode,spotdiff,clevr,img-edit,moment,naturalist,nlvr,svo')
+    parser.add_argument('--tasks', type=str, default='spotdiff,clevr,img-edit,moment,naturalist,nlvr,svo')
     parser.add_argument('--sample_ratios', type=str, default='')
     parser.add_argument('--multitask', type=str, default='')
+    parser.add_argument('--small_heads', type=str, default='spotdiff,clevr,img-edit,naturalist')
+    parser.add_argument('--big_heads', type=str, default='nlvr,imagecode')
+    parser.add_argument('--pretrained_heads', type=str, default='moment, svo')
+    parser.add_argument('--load_optimizer', action='store_true')
     parser.add_argument('--job_id', type=str)
     args = parser.parse_args()
 
@@ -425,6 +442,13 @@ if __name__ == '__main__':
         args.sample_ratios = [1] * len(args.tasks)
     else:
         args.sample_ratios = [float(x) for x in args.sample_ratios.split(',')]
+
+    
+    args.big_heads = args.big_heads.split(',')
+    args.small_heads = args.small_heads.split(',')
+    args.pretrained_heads = args.pretrained_heads.split(',')
+
+
 
     if args.debug:
         wandb.init(project='Debug-can-be-deleted', settings=wandb.Settings(start_method='fork'), group=args.job_id)
@@ -457,6 +481,10 @@ if __name__ == '__main__':
     config['task_heads'] = args.share_heads
     config['multitask'] = args.multitask
     config['static_only'] = args.static_only
+    config['big_heads'] = args.big_heads
+    config['small_heads'] = args.small_heads
+    config['pretrained_heads'] = args.pretrained_heads
+    config['load_optimizer'] = args.load_optimizer
 
     transfer_type = 'multi' if args.multitask else 'seq'
 

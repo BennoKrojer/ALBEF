@@ -37,7 +37,7 @@ def add_weight_decay(model, weight_decay=1e-5, skip_list=()):
         {'params': decay, 'weight_decay': weight_decay}]
 
 
-def create_optimizer(args, model, filter_bias_and_bn=True):
+def create_optimizer(args, model, filter_bias_and_bn=True, state_dict=None):
     opt_lower = args.opt.lower()
     weight_decay = args.weight_decay
     if weight_decay and filter_bias_and_bn:
@@ -118,5 +118,8 @@ def create_optimizer(args, model, filter_bias_and_bn=True):
     if len(opt_split) > 1:
         if opt_split[0] == 'lookahead':
             optimizer = Lookahead(optimizer)
+
+    if state_dict is not None:
+        optimizer.load_state_dict(state_dict)
 
     return optimizer

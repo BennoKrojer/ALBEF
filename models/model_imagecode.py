@@ -27,13 +27,18 @@ class ALBEF(nn.Module):
         
         self.text_encoder = BertModel.from_pretrained(text_encoder, config=bert_config, add_pooling_layer=False)  
         
-        random_head = ['spotdiff', 'clevr', 'img-edit', 'naturalist']
-        pretrained_head = ['imagecode', 'moment', 'svo']
-        big_head = ['nlvr']
-
         self.it_head = nn.Linear(self.text_encoder.config.hidden_size, 3) #pretrained head
 
         self.heads = nn.ModuleDict()
+        if tasks is None:
+            tasks = ['imagecode']
+            random_head = ['imagecode']
+            pretrained_head = []
+            big_head = []
+        else:
+            random_head = config['small_heads']
+            pretrained_head = config['pretrained_heads']
+            big_head = config['big_heads']
         for task in tasks:
             if task in random_head:
                 self.heads[task] = nn.Linear(self.text_encoder.config.hidden_size, 2)
@@ -84,7 +89,8 @@ class ALBEF(nn.Module):
             
             
     def forward(self, image, text, targets, alpha=0, train=True, task=''):
-        
+        if task == '':
+            task = 'imagecode'
         image_embeds = self.visual_encoder(image) 
         image_atts = torch.ones(image_embeds.size()[:-1],dtype=torch.long).to(image.device)
         
