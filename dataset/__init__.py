@@ -70,7 +70,7 @@ def create_dataset(dataset, config, fullset=False):
         return train_dataset, val_dataset
     
     elif dataset == 'moment':
-        train_dataset = MomentClassificationDataset(train_transform, 'train', debug=config['debug'])
+        train_dataset = MomentClassificationDataset(train_transform, 'train', debug=config['debug'], full_dataset=config['full_dataset'])
         val_dataset = MomentClassificationDataset(test_transform, 'val', debug=config['debug'])
         return train_dataset, val_dataset
 

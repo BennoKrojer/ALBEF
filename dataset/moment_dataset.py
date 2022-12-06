@@ -15,12 +15,13 @@ from PIL import Image
 
 class MomentClassificationDataset(Dataset):
 
-    def __init__(self, transform, split, debug=False):
+    def __init__(self, transform, split, debug=False, full_dataset=False):
         data_dir = '/home/mila/b/benno.krojer/scratch/moment-retrieval'
         super().__init__()
         assert split in ['train', 'val']
         self.transform = transform
         self.debug = debug
+        self.full_dataset = full_dataset
         
         self.data = self.load_data(data_dir, split)
 
@@ -34,7 +35,7 @@ class MomentClassificationDataset(Dataset):
             if self.debug and i > 130:
                 break
             # stop after 1/10 of the data
-            if i > len(json_file) // 10:
+            if not self.full_dataset and i > len(json_file) // 10:
                 break
             pos_id = str(row['pos_frame'])
             neg_id = str(row['neg_frame'])

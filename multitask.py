@@ -427,12 +427,10 @@ if __name__ == '__main__':
     parser.add_argument('--inference_eval', action='store_true')
 
     parser.add_argument('--share_heads', type=str, default='False')
-    parser.add_argument('--tasks', type=str, default='spotdiff,clevr,img-edit,moment,naturalist,nlvr,svo')
+    parser.add_argument('--tasks', type=str, default='imagecode,spotdiff,clevr,img-edit,moment,naturalist,nlvr,svo')
     parser.add_argument('--sample_ratios', type=str, default='')
     parser.add_argument('--multitask', type=str, default='')
-    parser.add_argument('--small_heads', type=str, default='spotdiff,clevr,img-edit,naturalist')
-    parser.add_argument('--big_heads', type=str, default='nlvr,imagecode')
-    parser.add_argument('--pretrained_heads', type=str, default='moment, svo')
+    parser.add_argument('--imagecode_head', type=str, default='big')
     parser.add_argument('--load_optimizer', action='store_true')
     parser.add_argument('--job_id', type=str)
     args = parser.parse_args()
@@ -443,12 +441,12 @@ if __name__ == '__main__':
     else:
         args.sample_ratios = [float(x) for x in args.sample_ratios.split(',')]
 
-    
-    args.big_heads = args.big_heads.split(',')
-    args.small_heads = args.small_heads.split(',')
-    args.pretrained_heads = args.pretrained_heads.split(',')
-
-
+    args.big_heads = ['nlvr', 'spotdiff', 'clevr', 'img-edit', 'naturalist']
+    args.pretrained_heads = ['moment', 'svo']
+    if args.imagecode_head == 'big':
+        args.big_heads.append('imagecode')
+    else:
+        args.pretrained_heads.append('imagecode')
 
     if args.debug:
         wandb.init(project='Debug-can-be-deleted', settings=wandb.Settings(start_method='fork'), group=args.job_id)
@@ -469,7 +467,7 @@ if __name__ == '__main__':
     config['schedular']['lr'] = args.lr
     config['schedular']['min_lr'] = args.min_lr
     config['schedular']['warmup_lr'] = args.warmup_lr
-    config['max_epoch'] = args.max_epoch
+    config['schedular']['epochs'] = args.max_epoch
     config['video_only'] = args.video_only
     config['random_pair_sampling'] = args.random_pair_sampling
     config['aug_prob'] = args.aug_prob
@@ -482,13 +480,12 @@ if __name__ == '__main__':
     config['multitask'] = args.multitask
     config['static_only'] = args.static_only
     config['big_heads'] = args.big_heads
-    config['small_heads'] = args.small_heads
     config['pretrained_heads'] = args.pretrained_heads
     config['load_optimizer'] = args.load_optimizer
 
     transfer_type = 'multi' if args.multitask else 'seq'
 
-    args.output_dir = os.path.join(args.output_dir,f'{transfer_type}_{"-".join(args.tasks)}_{"-".join([str(x) for x in args.sample_ratios])}_share_heads-{args.share_heads}')
+    args.output_dir = os.path.join(args.output_dir,f'{transfer_type}_{"-".join(args.tasks)}_{"-".join([str(x) for x in args.sample_ratios])}_{args.job_id}')
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
         
     yaml.dump(config, open(os.path.join(args.output_dir, 'config.yaml'), 'w'))    

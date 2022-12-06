@@ -32,17 +32,13 @@ class ALBEF(nn.Module):
         self.heads = nn.ModuleDict()
         if tasks is None:
             tasks = ['imagecode']
-            random_head = ['imagecode']
-            pretrained_head = []
+            pretrained_head = ['imagecode']
             big_head = []
         else:
-            random_head = config['small_heads']
             pretrained_head = config['pretrained_heads']
             big_head = config['big_heads']
         for task in tasks:
-            if task in random_head:
-                self.heads[task] = nn.Linear(self.text_encoder.config.hidden_size, 2)
-            elif task in pretrained_head:
+            if task in pretrained_head:
                 # copy parameters from it_head
                 self.heads[task] = nn.Linear(self.text_encoder.config.hidden_size, 3)
                 self.heads[task].weight.data = self.it_head.weight.data.clone()
@@ -65,9 +61,7 @@ class ALBEF(nn.Module):
             self.it_head_m = nn.Linear(self.text_encoder_m.config.hidden_size, 3) #pretrained head
             self.heads_m = nn.ModuleDict()
             for task in tasks:
-                if task in random_head:
-                    self.heads_m[task] = nn.Linear(self.text_encoder_m.config.hidden_size, 2)
-                elif task in pretrained_head:
+                if task in pretrained_head:
                     # copy parameters from it_head
                     self.heads_m[task] = nn.Linear(self.text_encoder_m.config.hidden_size, 3)
                     self.heads_m[task].weight.data = self.it_head_m.weight.data.clone()
