@@ -36,7 +36,7 @@ class ImageCoDeDataset(Dataset):
 
     def __init__(self, data_dir, split, config, image_transform=None, text_transform=None, video_only=False, quarters=False):
         super().__init__()
-        assert split in ['train', 'valid']
+        assert split in ['train', 'valid', 'test']
         self.quarters = quarters
 
         if image_transform is not None:
@@ -54,7 +54,7 @@ class ImageCoDeDataset(Dataset):
         #     self.tokenizer = BertTokenizerFast.from_pretrained('bert-base-uncased')
         #     self.text_transform = partial(default_text_transform, tokenizer=self.tokenizer)
 
-        self.data = self.load_data(Path(data_dir), '/network/scratch/b/benno.krojer/dataset/games', split, video_only)
+        self.data = self.load_data(Path(data_dir), '/network/scratch/b/benno.krojer/image-sets', split, video_only)
 
     @staticmethod
     def load_data(data_dir, img_path, split, video_only=False):

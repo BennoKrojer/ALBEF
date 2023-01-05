@@ -27,7 +27,7 @@ import utils
 from dataset import create_dataset, create_sampler, create_loader
 from scheduler import create_scheduler
 from optim import create_optimizer
-from torchmetrics.functional import accuracy
+# from torchmetrics.functional import accuracy
 from dataset_imagecode import ImageCoDeDataset
 import wandb
 
@@ -53,9 +53,12 @@ def evaluate(model, data_loader, tokenizer, device):
         matching_score = matching_score.reshape(-1, 10)
         pred = torch.argmax(matching_score, dim=1)
         correct += (pred == target).sum()
-        correct2 += accuracy(matching_score, target, top_k=2) * target.shape[0]
-        correct3 += accuracy(matching_score, target, top_k=3) * target.shape[0]
-        correct5 += accuracy(matching_score, target, top_k=5) * target.shape[0]
+        # correct2 += accuracy(matching_score, target, top_k=2) * target.shape[0]
+        # correct3 += accuracy(matching_score, target, top_k=3) * target.shape[0]
+        # correct5 += accuracy(matching_score, target, top_k=5) * target.shape[0]
+        correct2 = 0
+        correct3 = 0
+        correct5 = 0
         total += target.shape[0]
 
     return correct/total, correct2/total, correct3/total, correct5/total
@@ -114,6 +117,7 @@ def main(args, config):
     data_dir = '../imagecode/data'
     train_dataset = ImageCoDeDataset(data_dir, 'train', config)
     val_dataset = ImageCoDeDataset(data_dir, 'valid', config)
+    test_dataset = ImageCoDeDataset(data_dir, 'test', config)
 
     if args.distributed:
         num_tasks = utils.get_world_size()
@@ -122,11 +126,11 @@ def main(args, config):
     else:
         samplers = [None, None, None]
     
-    train_loader, val_loader = create_loader([train_dataset, val_dataset],samplers,
-                                                          batch_size=[args.batchsize]+[args.batchsize],
-                                                          num_workers=[4,4],
-                                                          is_trains=[True, False], 
-                                                          collate_fns=[None,None])   
+    train_loader, val_loader, test_loader = create_loader([train_dataset, val_dataset, test_dataset],samplers,
+                                                          batch_size=[args.batchsize, args.batchsize, args.batchsize],
+                                                          num_workers=[4,4,4],
+                                                          is_trains=[True, False, False], 
+                                                          collate_fns=[None, None, None])   
        
     tokenizer = BertTokenizer.from_pretrained(args.text_encoder)
 
@@ -181,12 +185,17 @@ def main(args, config):
         if not args.evaluate:
             train(model, train_loader, optimizer, tokenizer, epoch, warmup_steps, device, lr_scheduler, args)
         with torch.no_grad():
+            if args.evaluate:
+                accuracy, accuracy2, accuracy3, accuracy5 = evaluate(model, test_loader, tokenizer, device)   
+                print('TEST ACCURACY: ', accuracy)
             accuracy, accuracy2, accuracy3, accuracy5 = evaluate(model, val_loader, tokenizer, device)
-            print(accuracy)
+            print('VALIDATION ACCURACY: ', accuracy)
             print(accuracy2)
             print(accuracy3)
             print(accuracy5)
-            wandb.log({'Accuracy': accuracy})        
+            wandb.log({'Accuracy': accuracy})
+            
+              
 
         if args.evaluate: 
             break
